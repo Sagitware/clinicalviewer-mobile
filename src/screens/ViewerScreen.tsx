@@ -19,10 +19,10 @@ const CT_PRESETS = [
   { label: 'Liver', w: 150, c: 90 },
 ];
 
-const TOOLS: { id: Tool; label: string }[] = [
-  { id: 'window', label: 'Window' },
-  { id: 'pan', label: 'Pan' },
-  { id: 'scroll', label: 'Scroll' },
+const TOOL_BUTTONS: { id: Tool; label: string; glyph: string; pos: 'tl' | 'bl' | 'br' }[] = [
+  { id: 'pan', label: 'Pan', glyph: '✥', pos: 'tl' },
+  { id: 'scroll', label: 'Scroll', glyph: '☰', pos: 'bl' },
+  { id: 'window', label: 'Window', glyph: '◐', pos: 'br' },
 ];
 
 const CINE_FPS = 12;
@@ -161,7 +161,7 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
         <DicomViewport frame={frame} view={view} tool={tool} smooth={smooth} onStep={step} />
 
         <View style={styles.overlay} pointerEvents="none">
-          <View style={styles.overlayRow}>
+          <View style={[styles.overlayRow, styles.rowTop]}>
             <View>
               <Text style={styles.overlayText}>{source.patientName}</Text>
               <Text style={styles.overlayText}>{source.studyDate}</Text>
@@ -173,7 +173,7 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
               </Text>
             </View>
           </View>
-          <View style={styles.overlayRow}>
+          <View style={[styles.overlayRow, styles.rowBottom]}>
             <View>
               <Text style={styles.overlayText}>
                 Im {index + 1} / {source.count}
@@ -187,6 +187,19 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
             <Text style={styles.overlayText}>{readout.zoom}%</Text>
           </View>
         </View>
+
+        {TOOL_BUTTONS.map((t) => (
+          <Pressable
+            key={t.id}
+            accessibilityRole="button"
+            accessibilityLabel={t.label}
+            accessibilityState={{ selected: tool === t.id }}
+            onPress={() => setTool(t.id)}
+            style={[styles.toolBtn, styles[t.pos], tool === t.id && styles.toolBtnActive]}
+          >
+            <Text style={[styles.toolGlyph, tool === t.id && styles.toolGlyphActive]}>{t.glyph}</Text>
+          </Pressable>
+        ))}
 
         {loading && !frame ? (
           <View style={styles.center} pointerEvents="none">
@@ -222,19 +235,6 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
         ) : null}
 
         <View style={styles.toolRow}>
-          <View style={styles.segment}>
-            {TOOLS.map((t) => (
-              <Pressable
-                key={t.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected: tool === t.id }}
-                onPress={() => setTool(t.id)}
-                style={[styles.segmentItem, tool === t.id && styles.segmentActive]}
-              >
-                <Text style={[styles.segmentText, tool === t.id && styles.segmentTextActive]}>{t.label}</Text>
-              </Pressable>
-            ))}
-          </View>
           {source.count > 1 ? (
             <Pressable
               accessibilityRole="button"
@@ -284,6 +284,25 @@ const styles = StyleSheet.create({
   topTitle: { flex: 1, color: colors.text, fontSize: type.title, fontWeight: '600', textAlign: 'right' },
   viewport: { flex: 1, backgroundColor: colors.viewport },
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, padding: space(2), justifyContent: 'space-between' },
+  rowTop: { paddingLeft: 52 },
+  rowBottom: { paddingHorizontal: 52 },
+  toolBtn: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.line,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolBtnActive: { borderColor: colors.accent },
+  toolGlyph: { color: colors.overlay, fontSize: 24 },
+  toolGlyphActive: { color: colors.accent },
+  tl: { top: space(2), left: space(2) },
+  bl: { bottom: space(2), left: space(2) },
+  br: { bottom: space(2), right: space(2) },
   overlayRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: space(4) },
   alignEnd: { alignItems: 'flex-end', flexShrink: 1 },
   overlayText: {
@@ -306,19 +325,7 @@ const styles = StyleSheet.create({
     gap: space(2),
   },
   slider: { marginHorizontal: space(3), height: 32 },
-  toolRow: { flexDirection: 'row', alignItems: 'center', gap: space(2), paddingHorizontal: space(3) },
-  segment: {
-    flex: 1,
-    flexDirection: 'row',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.line,
-    overflow: 'hidden',
-  },
-  segmentItem: { flex: 1, paddingVertical: space(2.5), alignItems: 'center', backgroundColor: colors.panel },
-  segmentActive: { backgroundColor: colors.raised },
-  segmentText: { color: colors.muted, fontSize: type.body },
-  segmentTextActive: { color: colors.accent, fontWeight: '600' },
+  toolRow: { flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: space(3) },
   chips: { gap: space(2), paddingHorizontal: space(3) },
   chip: {
     paddingHorizontal: space(3),

@@ -13,7 +13,7 @@ import {
   Skia,
 } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useDerivedValue, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { GRAY_EFFECT, type LoadedFrame } from '../lib/skiaFrames';
 import { colors } from '../theme';
@@ -166,11 +166,21 @@ export function DicomViewport({ frame, view: v, tool, smooth, onStep }: Props) {
 
   const rect = useMemo(() => Skia.XYWHRect(0, 0, width, height), [width, height]);
 
+  // Fit on the UI thread once both the canvas and the image sizes are known, in either order.
+  useAnimatedReaction(
+    () => v.canvasW.value + ':' + v.canvasH.value + ':' + v.imgW.value + ':' + v.imgH.value,
+    (cur, prev) => {
+      if (cur !== prev) fitView(v);
+    },
+  );
+
   const onLayout = (e: LayoutChangeEvent) => {
-    const first = v.canvasW.value === 0;
-    v.canvasW.value = e.nativeEvent.layout.width;
-    v.canvasH.value = e.nativeEvent.layout.height;
-    if (first) fitView(v);
+    const { width: w, height: h } = e.nativeEvent.layout;
+    const changed = v.canvasW.value !== w || v.canvasH.value !== h;
+    v.canvasW.value = w;
+    v.canvasH.value = h;
+    // Re-centre whenever the viewport size settles or changes (rotation, toolbars appearing).
+    if (changed) fitView(v);
   };
 
   return (

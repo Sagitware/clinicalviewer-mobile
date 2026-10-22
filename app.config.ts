@@ -34,6 +34,7 @@ const config: ExpoConfig = {
     supportsTablet: true,
     bundleIdentifier: 'com.sagitware.clinicalview.mobile',
     infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
       // Lets the app reach an Orthanc server on the local network over HTTP.
       // Internet servers still require HTTPS.
       NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
