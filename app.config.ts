@@ -92,6 +92,11 @@ const config: ExpoConfig = {
     },
   },
   web: { favicon: './assets/favicon.png' },
+  extra: {
+    eas: {
+      projectId: '8ef7194b-cb5d-4ce2-ac01-7bc1bb94bf1c',
+    },
+  },
   plugins: [
     'expo-secure-store',
     'expo-web-browser',
