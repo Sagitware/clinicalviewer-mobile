@@ -1,6 +1,6 @@
-# Deploying ClinicalView Mobile to the App Store and Google Play
+# Deploying fig-dicom to the App Store and Google Play
 
-Expo SDK 57 app, built and submitted with EAS (Expo Application Services). No local Xcode or Android Studio is needed.
+Expo SDK 58 app, built and submitted with EAS (Expo Application Services). No local Xcode or Android Studio is needed.
 
 - iOS bundle ID: `com.sagitware.clinicalview.mobile`
 - Android package: `com.sagitware.clinicalview.mobile`
@@ -101,10 +101,10 @@ eas device:create                                        # registers an iPhone f
 1. Enrol in the Apple Developer Program and wait for approval.
 2. In **App Store Connect > Apps > + > New App**:
    - Platform: iOS
-   - Name: ClinicalView Mobile (must be unique in the store)
+   - Name: fig-dicom (must be unique in the store)
    - Primary language
    - Bundle ID: `com.sagitware.clinicalview.mobile` (EAS registers it on the first build if it's missing)
-   - SKU: any unique string, for example `clinicalview-mobile`
+   - SKU: any unique string, for example `fig-dicom`
 3. Note the app's **Apple ID** (a numeric ID under App Information). EAS Submit needs it, or you can enter it when prompted.
 
 ### 3.2 Build

@@ -86,16 +86,25 @@ export function DicomViewport({ frame, view: v, tool, smooth, onStep }: Props) {
   const step = useCallback((d: number) => stepRef.current(d), []);
 
   const panStart = useSharedValue({ wc: 0, ww: 0, tx: 0, ty: 0, steps: 0 });
-  const pinchStart = useSharedValue({ s: 1, tx: 0, ty: 0, fx: 0, fy: 0 });
+  const pinchStart = useSharedValue({ s: 1, tx: 0, ty: 0, fx: 0, fy: 0, k: 1, n: 2 });
+  // A one-finger pan that started before the second finger landed stays active through the
+  // pinch and would overwrite its position, so it's paused until every finger lifts.
+  const panning = useSharedValue(false);
+  const pinched = useSharedValue(false);
 
   const gesture = useMemo(() => {
     const pan = Gesture.Pan()
       .maxPointers(1)
       .minDistance(2)
+      .onBegin(() => {
+        pinched.value = false;
+      })
       .onStart(() => {
         panStart.value = { wc: v.wc.value, ww: v.ww.value, tx: v.tx.value, ty: v.ty.value, steps: 0 };
+        panning.value = true;
       })
       .onUpdate((e) => {
+        if (pinched.value) return;
         const start = panStart.value;
         const mode = toolSV.value;
         if (mode === 0) {
@@ -113,16 +122,54 @@ export function DicomViewport({ frame, view: v, tool, smooth, onStep }: Props) {
             panStart.value = { ...start, steps };
           }
         }
+      })
+      .onFinalize(() => {
+        panning.value = false;
       });
 
     // Pinch zooms about the fingers and also pans as they move, in every tool.
     const pinch = Gesture.Pinch()
       .onStart((e) => {
-        pinchStart.value = { s: v.scale.value, tx: v.tx.value, ty: v.ty.value, fx: e.focalX, fy: e.focalY };
+        pinched.value = true;
+        // Undo what the pan did in its first few pixels before the second finger landed.
+        if (panning.value) {
+          const start = panStart.value;
+          if (toolSV.value === 0) {
+            v.ww.value = start.ww;
+            v.wc.value = start.wc;
+          } else if (toolSV.value === 1) {
+            v.tx.value = start.tx;
+            v.ty.value = start.ty;
+          }
+        }
+        pinchStart.value = {
+          s: v.scale.value,
+          tx: v.tx.value,
+          ty: v.ty.value,
+          fx: e.focalX,
+          fy: e.focalY,
+          k: e.scale,
+          n: e.numberOfPointers,
+        };
       })
       .onUpdate((e) => {
         const p = pinchStart.value;
-        const s = Math.min(Math.max(p.s * e.scale, 0.1), 40);
+        // When a finger lifts, the focal point jumps to the remaining finger. Skip those updates,
+        // and re-anchor when the finger count changes so the image doesn't jump.
+        if (e.numberOfPointers !== p.n) {
+          pinchStart.value = {
+            s: v.scale.value,
+            tx: v.tx.value,
+            ty: v.ty.value,
+            fx: e.focalX,
+            fy: e.focalY,
+            k: e.scale,
+            n: e.numberOfPointers,
+          };
+          return;
+        }
+        if (e.numberOfPointers < 2) return;
+        const s = Math.min(Math.max((p.s * e.scale) / p.k, 0.1), 40);
         const r = s / p.s;
         v.scale.value = s;
         v.tx.value = e.focalX - (p.fx - p.tx) * r;
@@ -134,7 +181,7 @@ export function DicomViewport({ frame, view: v, tool, smooth, onStep }: Props) {
       .onEnd(() => fitView(v));
 
     return Gesture.Simultaneous(pan, pinch, doubleTap);
-  }, [v, toolSV, panStart, pinchStart, step]);
+  }, [v, toolSV, panStart, pinchStart, panning, pinched, step]);
 
   const transform = useDerivedValue(() => [
     { translateX: v.tx.value },

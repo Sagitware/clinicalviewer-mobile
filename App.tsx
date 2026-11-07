@@ -185,7 +185,7 @@ export default function App() {
     [showImport],
   );
 
-  // Attachments opened with "Open in ClinicalView" from Mail, Gmail, Files, and similar apps.
+  // Attachments opened with "Open in fig-dicom" from Mail, Gmail, Files, and similar apps.
   useIncomingFiles((url, name) => showImport(readIncomingFile(url), 'Opened file', name));
 
   const saveSettings = useCallback(

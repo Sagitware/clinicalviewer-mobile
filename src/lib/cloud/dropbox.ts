@@ -48,7 +48,7 @@ class DropboxProvider implements CloudProvider {
     });
     const result = await request.promptAsync(discovery);
     if (result.type !== 'success') {
-      if (result.type === 'error') throw new Error(result.error?.message ?? 'Dropbox sign-in failed.');
+      if (result.type === 'error') throw new Error(result.error?.description ?? 'Dropbox sign-in failed.');
       throw new SignInCancelled();
     }
     const tokens = await AuthSession.exchangeCodeAsync(

@@ -1,6 +1,6 @@
-# ClinicalView Mobile — setup
+# fig-dicom — setup
 
-A React Native (Expo SDK 57) DICOM viewer that reads from the same Orthanc DICOMweb
+A React Native (Expo SDK 58) DICOM viewer that reads from the same Orthanc DICOMweb
 server as the ClinicalView PACS web workstation, and can also open DICOM files stored
 on the phone.
 
@@ -137,13 +137,13 @@ device") when their apps are installed. That path needs no keys but can't pick f
 
 ## Opening email attachments
 
-ClinicalView registers itself for `.dcm`, `.dicom`, `.dic` and `.zip` files, so it shows
+fig-dicom registers itself for `.dcm`, `.dicom`, `.dic` and `.zip` files, so it shows
 up when someone opens an attachment:
 
 - **iOS Mail, Outlook, Gmail for iOS:** tap the attachment, tap the share button, then
-  choose ClinicalView in the app row (or "Open in…" in some apps).
-- **Gmail and other Android mail apps:** tap the attachment and pick ClinicalView. If the
-  mail app labels the file as generic binary, ClinicalView still appears, because it
+  choose fig-dicom in the app row (or "Open in…" in some apps).
+- **Gmail and other Android mail apps:** tap the attachment and pick fig-dicom. If the
+  mail app labels the file as generic binary, fig-dicom still appears, because it
   also accepts `application/octet-stream`.
 - The app opens straight to the series list for that file. Zips with whole series work.
 
@@ -176,7 +176,7 @@ src/lib/localDb.ts              SQLite library of imported files
 src/lib/cloud/googleDrive.ts    Google Drive provider (Google Sign-In + Drive API v3)
 src/lib/cloud/dropbox.ts        Dropbox provider (OAuth PKCE + Dropbox API v2)
 src/lib/cloud/importer.ts       folder scan, size check, parallel download
-src/lib/incomingFiles.ts        files opened from Mail, Gmail, Files ("Open in ClinicalView")
+src/lib/incomingFiles.ts        files opened from Mail, Gmail, Files ("Open in fig-dicom")
 src/lib/settings.ts             server settings in the device keychain
 src/components/DicomViewport.tsx Skia canvas and gestures
 src/screens/*                   Studies, Series, Viewer, Server, Import, Cloud browser

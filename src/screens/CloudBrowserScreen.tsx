@@ -155,7 +155,7 @@ export function CloudBrowserScreen({ provider, onBack, onImported }: Props) {
           ) : (
             <>
               <Text style={styles.centerTitle}>Connect {provider.label}</Text>
-              <Text style={styles.centerText}>Read-only access. ClinicalView can browse and download, never change or delete.</Text>
+              <Text style={styles.centerText}>Read-only access. fig-dicom can browse and download, never change or delete.</Text>
               {error ? <Text style={styles.error}>{error}</Text> : null}
               <Button label={`Sign in to ${provider.label}`} primary onPress={signIn} />
             </>

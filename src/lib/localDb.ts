@@ -100,7 +100,7 @@ export async function saveInstances(
     const name = safeName(i.sopUid);
     const f = fileFor(name);
     f.create({ overwrite: true });
-    f.write(i.bytes);
+    await f.write(i.bytes);
     written.push(name);
   }
   try {

@@ -19,7 +19,7 @@ export function MenuButton({ items }: { items: Item[] }) {
       label: 'About',
       onPress: () =>
         Alert.alert(
-          'ClinicalView Mobile',
+          'fig-dicom',
           `Version ${Constants.expoConfig?.version ?? '1.0.0'}\n\nDICOM viewer for DICOMweb servers, local files and C-STORE. Not for diagnostic use.`,
         ),
     },
