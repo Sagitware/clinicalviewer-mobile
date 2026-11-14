@@ -6,17 +6,30 @@ import * as WebBrowser from 'expo-web-browser';
 import { File } from 'expo-file-system';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { DicomwebClient, type StudySummary } from './src/lib/dicomClient';
-import { loadConfig, saveConfig, type ServerConfig } from './src/lib/settings';
+import type { StudySummary } from './src/lib/dicomClient';
+import {
+  LOCAL,
+  deleteServer,
+  loadLocation,
+  loadServers,
+  newServer,
+  saveLocation,
+  saveServer,
+  serverLabel,
+  type ServerConfig,
+} from './src/lib/settings';
 import type { CloudProvider } from './src/lib/cloud/types';
 import { readIncomingFile, useIncomingFiles } from './src/lib/incomingFiles';
 import { saveInstances, listSeries, loadSeriesFiles, type SavedStudy } from './src/lib/localDb';
-import { importDicomBuffers, importFromUrl, importLocalFiles, openRemoteSeries, type LocalImportResult, type SliceSource } from './src/lib/sources';
+import { importDicomBuffers, importFromUrl, importLocalFiles, type LocalImportResult, type SliceSource } from './src/lib/sources';
+import { createStudyServer } from './src/lib/studyServer';
+import { LocationMenu } from './src/components/LocationMenu';
 import { CloudBrowserScreen } from './src/screens/CloudBrowserScreen';
 import { LibraryScreen } from './src/screens/LibraryScreen';
 import { ImportScreen } from './src/screens/ImportScreen';
 import { SeriesListScreen, type SeriesItem } from './src/screens/SeriesListScreen';
-import { SettingsScreen } from './src/screens/SettingsScreen';
+import { ServerScreen } from './src/screens/ServerScreen';
+import { ServersScreen } from './src/screens/ServersScreen';
 import { StudyListScreen } from './src/screens/StudyListScreen';
 import { ViewerScreen } from './src/screens/ViewerScreen';
 import { colors } from './src/theme';
@@ -26,10 +39,11 @@ WebBrowser.maybeCompleteAuthSession();
 
 /** Simple view-state navigation, the same model as the ClinicalView web app. */
 type Route =
-  | { name: 'studies' }
-  | { name: 'settings' }
+  // Local studies or the chosen server's studies, depending on the location.
+  | { name: 'home' }
+  | { name: 'servers' }
+  | { name: 'server'; server: ServerConfig; isNew: boolean; selectOnSave?: boolean }
   | { name: 'import' }
-  | { name: 'library' }
   | { name: 'cloud'; provider: CloudProvider }
   | {
       name: 'series';
@@ -41,15 +55,21 @@ type Route =
   | { name: 'viewer'; source: SliceSource; backLabel: string };
 
 export default function App() {
-  const [config, setConfig] = useState<ServerConfig | null>(null);
-  const [stack, setStack] = useState<Route[]>([{ name: 'library' }]);
+  const [servers, setServers] = useState<ServerConfig[] | null>(null);
+  // LOCAL or a server id; an id that no longer exists falls back to Local studies.
+  const [location, setLocation] = useState(LOCAL);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [stack, setStack] = useState<Route[]>([{ name: 'home' }]);
   const route = stack[stack.length - 1];
 
   const push = useCallback((r: Route) => setStack((s) => [...s, r]), []);
   const pop = useCallback(() => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)), []);
 
   useEffect(() => {
-    loadConfig().then(setConfig);
+    Promise.all([loadServers(), loadLocation()]).then(([s, l]) => {
+      setServers(s);
+      setLocation(l);
+    });
   }, []);
 
   useEffect(() => {
@@ -63,7 +83,14 @@ export default function App() {
     return () => sub.remove();
   }, [stack.length, pop]);
 
-  const client = useMemo(() => (config ? new DicomwebClient(config) : null), [config]);
+  const server = servers?.find((s) => s.id === location) ?? null;
+  const client = useMemo(() => (server ? createStudyServer(server) : null), [server]);
+
+  const chooseLocation = useCallback((next: string) => {
+    setLocation(next);
+    saveLocation(next);
+    setStack([{ name: 'home' }]);
+  }, []);
 
   const openStudy = useCallback(
     (study: StudySummary) => {
@@ -72,7 +99,7 @@ export default function App() {
         name: 'series',
         title: study.patientName,
         subtitle: [study.studyDate, study.description].filter(Boolean).join('   '),
-        backLabel: 'Server',
+        backLabel: 'Studies',
         load: async () => ({
           items: (await client.searchSeries(study.studyUID)).map((s) => ({
             key: s.seriesUID,
@@ -81,7 +108,7 @@ export default function App() {
             detail: [s.number != null && `Series ${s.number}`, s.instanceCount != null && `${s.instanceCount} images`]
               .filter(Boolean)
               .join('   '),
-            open: () => openRemoteSeries(client, study, s),
+            open: () => client.openSeries(study, s),
           })),
         }),
       });
@@ -188,38 +215,74 @@ export default function App() {
   // Attachments opened with "Open in fig-dicom" from Mail, Gmail, Files, and similar apps.
   useIncomingFiles((url, name) => showImport(readIncomingFile(url), 'Opened file', name));
 
-  const saveSettings = useCallback(
-    async (cfg: ServerConfig) => {
-      await saveConfig(cfg);
-      setConfig(cfg);
+  const addServer = useCallback(
+    (selectOnSave: boolean) => push({ name: 'server', server: newServer(), isNew: true, selectOnSave }),
+    [push],
+  );
+
+  const storeServer = useCallback(
+    async (s: ServerConfig, selectOnSave?: boolean) => {
+      setServers(await saveServer(s, servers ?? []));
+      if (selectOnSave) chooseLocation(s.id);
+      else pop();
+    },
+    [servers, chooseLocation, pop],
+  );
+
+  const removeServer = useCallback(
+    async (id: string) => {
+      setServers(await deleteServer(id, servers ?? []));
+      if (location === id) {
+        setLocation(LOCAL);
+        saveLocation(LOCAL);
+      }
       pop();
     },
-    [pop],
+    [servers, location, pop],
   );
 
   let screen: React.ReactNode;
-  if (!config || !client) {
+  if (!servers) {
     screen = <ActivityIndicator style={styles.boot} color={colors.accent} />;
-  } else if (route.name === 'studies') {
+  } else if (route.name === 'home') {
+    screen =
+      server && client ? (
+        <StudyListScreen
+          key={server.id}
+          title={serverLabel(server)}
+          client={client}
+          onOpenStudy={openStudy}
+          onSwitchLocation={() => setMenuOpen(true)}
+          onOpenFiles={() => push({ name: 'import' })}
+          onServers={() => push({ name: 'servers' })}
+          onEditServer={() => push({ name: 'server', server, isNew: false })}
+        />
+      ) : (
+        <LibraryScreen
+          onOpenStudy={openSavedStudy}
+          onSwitchLocation={() => setMenuOpen(true)}
+          onOpenFiles={() => push({ name: 'import' })}
+          onServers={() => push({ name: 'servers' })}
+        />
+      );
+  } else if (route.name === 'servers') {
     screen = (
-      <StudyListScreen
-        key={config.baseUrl}
-        client={client}
-        onOpenStudy={openStudy}
-        onOpenFiles={() => push({ name: 'import' })}
+      <ServersScreen
+        servers={servers}
+        onEdit={(s) => push({ name: 'server', server: s, isNew: false })}
+        onAdd={() => addServer(false)}
         onBack={pop}
-        onSettings={() => push({ name: 'settings' })}
       />
     );
-  } else if (route.name === 'settings') {
-    screen = <SettingsScreen config={config} onSave={saveSettings} onBack={pop} />;
-  } else if (route.name === 'library') {
+  } else if (route.name === 'server') {
     screen = (
-      <LibraryScreen
-        onOpenStudy={openSavedStudy}
-        onOpenServer={() => push({ name: 'studies' })}
-        onOpenFiles={() => push({ name: 'import' })}
-        onSettings={() => push({ name: 'settings' })}
+      <ServerScreen
+        key={route.server.id}
+        server={route.server}
+        isNew={route.isNew}
+        onSave={(s) => storeServer(s, route.selectOnSave)}
+        onDelete={removeServer}
+        onBack={pop}
       />
     );
   } else if (route.name === 'import') {
@@ -259,6 +322,15 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar style="light" />
         <View style={styles.root}>{screen}</View>
+        <LocationMenu
+          visible={menuOpen}
+          location={server ? server.id : LOCAL}
+          servers={servers ?? []}
+          onSelect={chooseLocation}
+          onAddServer={() => addServer(true)}
+          onManageServers={() => push({ name: 'servers' })}
+          onClose={() => setMenuOpen(false)}
+        />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

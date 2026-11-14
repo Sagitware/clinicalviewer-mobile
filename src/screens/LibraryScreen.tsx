@@ -10,9 +10,9 @@ import { colors, space, type } from '../theme';
 
 interface Props {
   onOpenStudy: (study: SavedStudy) => void;
-  onOpenServer: () => void;
+  onSwitchLocation: () => void;
   onOpenFiles: () => void;
-  onSettings: () => void;
+  onServers: () => void;
 }
 
 function formatBytes(n: number): string {
@@ -20,7 +20,7 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function LibraryScreen({ onOpenStudy, onOpenServer, onOpenFiles, onSettings }: Props) {
+export function LibraryScreen({ onOpenStudy, onSwitchLocation, onOpenFiles, onServers }: Props) {
   const [studies, setStudies] = useState<SavedStudy[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,24 +64,23 @@ export function LibraryScreen({ onOpenStudy, onOpenServer, onOpenFiles, onSettin
       <Header
         title="Local studies"
         subtitle={studies ? `${studies.length} stored on this device · ${formatBytes(total)}` : undefined}
+        onTitlePress={onSwitchLocation}
+        titleHint="Choose local studies or a server"
         left={
           <MenuButton
             items={[
               { label: 'Import', onPress: onOpenFiles },
-              { label: 'Settings', onPress: onSettings },
+              { label: 'Servers', onPress: onServers },
             ]}
           />
         }
         right={
-          <>
-            {studies && studies.length > 0 ? (
-              <Button
-                label="Clear all"
-                onPress={() => confirm('Delete all stored studies?', 'This removes every saved image from this device.', clearLibrary)}
-              />
-            ) : null}
-            <Button label="Server" onPress={onOpenServer} />
-          </>
+          studies && studies.length > 0 ? (
+            <Button
+              label="Clear all"
+              onPress={() => confirm('Delete all stored studies?', 'This removes every saved image from this device.', clearLibrary)}
+            />
+          ) : undefined
         }
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}

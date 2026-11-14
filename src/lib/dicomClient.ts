@@ -5,6 +5,8 @@
 import { fetch } from 'expo/fetch';
 import { Tag, formatDate, formatPersonName, getNumber, getString, getStrings, type DicomJson } from './dicomJson';
 import type { ServerConfig } from './settings';
+import { openRemoteSeries, type SliceSource } from './sources';
+import type { StudyServer } from './studyServer';
 
 export interface StudySummary {
   studyUID: string;
@@ -31,7 +33,7 @@ const UNCOMPRESSED_FRAME =
 const ANY_FRAME = 'multipart/related; type="application/octet-stream"; transfer-syntax=*';
 const UNCOMPRESSED_SYNTAXES = ['1.2.840.10008.1.2', '1.2.840.10008.1.2.1'];
 
-export class DicomwebClient {
+export class DicomwebClient implements StudyServer {
   private readonly base: string;
 
   constructor(private readonly cfg: ServerConfig) {
@@ -82,6 +84,10 @@ export class DicomwebClient {
         instanceCount: getNumber(ds, Tag.NumberOfSeriesRelatedInstances),
       }))
       .sort((a, b) => (a.number ?? 9999) - (b.number ?? 9999));
+  }
+
+  openSeries(study: StudySummary, series: SeriesSummary): Promise<SliceSource> {
+    return openRemoteSeries(this, study, series);
   }
 
   seriesMetadata(studyUID: string, seriesUID: string): Promise<DicomJson[]> {

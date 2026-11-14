@@ -10,9 +10,12 @@ interface Props {
   onBack?: () => void;
   right?: ReactNode;
   left?: ReactNode;
+  /** Makes the title a dropdown trigger (shows a caret). */
+  onTitlePress?: () => void;
+  titleHint?: string;
 }
 
-export function Header({ title, subtitle, backLabel, onBack, right, left }: Props) {
+export function Header({ title, subtitle, backLabel, onBack, right, left, onTitlePress, titleHint }: Props) {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + space(2) }]}>
@@ -23,16 +26,26 @@ export function Header({ title, subtitle, backLabel, onBack, right, left }: Prop
       ) : null}
       <View style={styles.row}>
         {left}
-        <View style={styles.titles}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
+        <Pressable
+          style={styles.titles}
+          onPress={onTitlePress}
+          disabled={!onTitlePress}
+          accessibilityRole={onTitlePress ? 'button' : 'header'}
+          accessibilityHint={titleHint}
+          hitSlop={8}
+        >
+          <View style={styles.titleRow}>
+            <Text style={styles.title} numberOfLines={1}>
+              {title}
+            </Text>
+            {onTitlePress ? <Text style={styles.caret}>▾</Text> : null}
+          </View>
           {subtitle ? (
             <Text style={styles.subtitle} numberOfLines={1}>
               {subtitle}
             </Text>
           ) : null}
-        </View>
+        </Pressable>
         {right ? <View style={styles.right}>{right}</View> : null}
       </View>
     </View>
@@ -51,7 +64,9 @@ const styles = StyleSheet.create({
   backText: { color: colors.accent, fontSize: type.body },
   row: { flexDirection: 'row', alignItems: 'center' },
   titles: { flex: 1 },
-  title: { color: colors.text, fontSize: type.heading, fontWeight: '600' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: space(1.5) },
+  title: { flexShrink: 1, color: colors.text, fontSize: type.heading, fontWeight: '600' },
+  caret: { color: colors.accent, fontSize: type.title },
   subtitle: { color: colors.muted, fontSize: type.small, marginTop: 2 },
   right: { flexDirection: 'row', gap: space(2) },
 });

@@ -39,7 +39,8 @@ const config: ExpoConfig = {
       // Internet servers still require HTTPS.
       NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
       // Shown when a DICOM sender connects to the Receive (C-STORE) listener.
-      NSLocalNetworkUsageDescription: 'fig-dicom receives DICOM images sent from computers and scanners on your local network.',
+      NSLocalNetworkUsageDescription:
+        'fig-dicom connects to PACS servers and receives DICOM images from computers and scanners on your local network.',
       // "Open in fig-dicom" for .dcm and .zip attachments in Mail, Files, and other apps.
       // iOS doesn't know DICOM by default, so the type is declared here.
       UTImportedTypeDeclarations: [

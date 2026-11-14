@@ -62,14 +62,14 @@ npx eas-cli@latest env:list --environment production
 
 | Variable | Purpose | If unset |
 |---|---|---|
-| `EXPO_PUBLIC_DICOMWEB_URL` | Default server on first launch | Falls back to the hard-coded address in `src/lib/settings.ts` |
-| `EXPO_PUBLIC_DICOMWEB_USER` | Default username | Empty |
+| `EXPO_PUBLIC_DICOMWEB_URL` | Creates a first server on first launch | No server is preset. Users add servers from the location menu. |
+| `EXPO_PUBLIC_DICOMWEB_USER` | Username for that first server | Empty |
 | `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | Google Drive import. It also adds the Google Sign-In URL scheme at build time. | Google Drive shows as "not set up" |
 | `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Google Drive import | Same |
 | `EXPO_PUBLIC_DROPBOX_APP_KEY` | Dropbox import | Dropbox is hidden |
 
 - **Values are public:** `EXPO_PUBLIC_*` values are compiled into the app and readable by anyone, so never put passwords or secrets in them.
-- **Check the fallback server address:** the fallback in `src/lib/settings.ts` is a private LAN address. Either set `EXPO_PUBLIC_DICOMWEB_URL` to a real HTTPS server, or change the fallback before a public release.
+- **Default server:** only set `EXPO_PUBLIC_DICOMWEB_URL` for a server every user can reach, such as a public HTTPS demo. Otherwise leave it unset, and the app starts on Local studies with no server.
 - **HTTPS only:** iOS blocks plain HTTP to internet servers. Only local-network servers may use HTTP.
 
 See `SETUP.md` for creating the Google and Dropbox client IDs.

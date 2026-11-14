@@ -45,7 +45,7 @@ You only rebuild when native modules or `app.config.ts` change, not for code cha
 **Expo Go still works for everything except Google Drive and Dropbox.** Run
 `npx expo start`, then press `s` to switch to Expo Go before scanning the QR code
 (with `expo-dev-client` installed, the QR code targets the development build by
-default). Study search, the viewer, the Server screen, and importing files or zips
+default). Study search, the viewer, server setup, and importing files or zips
 from the device all work. The two cloud rows show "Needs a development build", and opening email attachments
 in the app also needs a development build.
 
@@ -63,13 +63,32 @@ Typecheck: `npm run typecheck`
    { "RemoteAccessAllowed": true }
    ```
 
-   If authentication is on, enter the username and password on the Server screen.
+   If authentication is on, enter the username and password when adding the server.
    CORS is not involved: native apps are not subject to it.
 3. **Compressed studies:** the app requests every frame as Explicit VR Little Endian
    (`transfer-syntax=1.2.840.10008.1.2.1`). Orthanc transcodes JPEG, JPEG-LS, JPEG 2000
    and RLE on the fly when that is requested. If you see
    "The server sent compressed pixels", your Orthanc build or DICOMweb plugin is too old
    to transcode frames; upgrade it.
+
+## Traditional DICOM servers (C-FIND / C-GET)
+
+Choose **DICOM (DIMSE)** when adding a server, then enter the host, port, the server's AE
+title, and this device's AE title (default `FIGDICOM`).
+
+- **Search** uses C-FIND at the Study Root level; the list stops at 50 studies (C-CANCEL).
+- **Opening a series** uses C-GET: the PACS sends the images back on the same connection,
+  so it never needs to connect to the phone. The whole series is held in memory and is not
+  saved to Local studies.
+- **On the PACS:** register this device's AE title and allow it C-FIND and C-GET. For
+  Orthanc, either add it to `DicomModalities` or set `"DicomAlwaysAllowFind": true` and
+  `"DicomAlwaysAllowGet": true`.
+- **Compressed images:** only uncompressed transfer syntaxes are offered, so the PACS must
+  transcode JPEG, JPEG 2000 and similar. Orthanc does this; some PACS don't, and those
+  images fail with a message saying so.
+- **Test connection** sends a C-ECHO.
+- C-MOVE (where the PACS pushes images to the device's receiver) is not supported yet.
+- Needs a development build (it uses `react-native-tcp-socket`); it doesn't work in Expo Go.
 
 AWS HealthImaging is not wired up on mobile yet. It returns HTJ2K frames, which need a
 native decoder or a transcoding proxy (see "Next steps").
@@ -177,9 +196,9 @@ src/lib/cloud/googleDrive.ts    Google Drive provider (Google Sign-In + Drive AP
 src/lib/cloud/dropbox.ts        Dropbox provider (OAuth PKCE + Dropbox API v2)
 src/lib/cloud/importer.ts       folder scan, size check, parallel download
 src/lib/incomingFiles.ts        files opened from Mail, Gmail, Files ("Open in fig-dicom")
-src/lib/settings.ts             server settings in the device keychain
+src/lib/settings.ts             server list and last location, in the device keychain
 src/components/DicomViewport.tsx Skia canvas and gestures
-src/screens/*                   Studies, Series, Viewer, Server, Import, Cloud browser
+src/screens/*                   Studies, Series, Viewer, Servers, Import, Cloud browser
 ```
 
 ## How rendering works
@@ -202,7 +221,7 @@ Reanimated shared values, so gestures never cross the JS bridge.
 - Frames being viewed live in memory and are dropped when you leave the viewer.
 - Files chosen from this device are copied to the cache by the system picker; the
   app reads them into memory and deletes those copies immediately.
-- Server address and credentials are persisted separately, in the iOS Keychain or
+- Server addresses and credentials are persisted separately, in the iOS Keychain or
   Android Keystore via `expo-secure-store`.
 
 ## Known limits

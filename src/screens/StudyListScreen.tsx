@@ -4,18 +4,21 @@ import { Button } from '../components/Button';
 import { Header } from '../components/Header';
 import { MenuButton } from '../components/MenuButton';
 import { ModalityBadge } from '../components/ModalityBadge';
-import type { DicomwebClient, StudySummary } from '../lib/dicomClient';
+import type { StudySummary } from '../lib/dicomClient';
+import type { StudyServer } from '../lib/studyServer';
 import { colors, space, type } from '../theme';
 
 interface Props {
-  client: DicomwebClient;
+  title: string;
+  client: StudyServer;
   onOpenStudy: (study: StudySummary) => void;
+  onSwitchLocation: () => void;
   onOpenFiles: () => void;
-  onBack: () => void;
-  onSettings: () => void;
+  onServers: () => void;
+  onEditServer: () => void;
 }
 
-export function StudyListScreen({ client, onOpenStudy, onOpenFiles, onBack, onSettings }: Props) {
+export function StudyListScreen({ title, client, onOpenStudy, onSwitchLocation, onOpenFiles, onServers, onEditServer }: Props) {
   const [query, setQuery] = useState('');
   const [studies, setStudies] = useState<StudySummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,15 +56,15 @@ export function StudyListScreen({ client, onOpenStudy, onOpenFiles, onBack, onSe
   return (
     <View style={styles.screen}>
       <Header
-        title="Server studies"
-        backLabel="Local"
-        onBack={onBack}
+        title={title}
         subtitle={client.host}
+        onTitlePress={onSwitchLocation}
+        titleHint="Choose local studies or another server"
         left={
           <MenuButton
             items={[
               { label: 'Import', onPress: onOpenFiles },
-              { label: 'Settings', onPress: onSettings },
+              { label: 'Servers', onPress: onServers },
             ]}
           />
         }
@@ -93,7 +96,7 @@ export function StudyListScreen({ client, onOpenStudy, onOpenFiles, onBack, onSe
               <Text style={styles.emptyText}>{error}</Text>
               <View style={styles.emptyActions}>
                 <Button label="Try again" primary onPress={() => search(query)} />
-                <Button label="Check server" onPress={onSettings} />
+                <Button label="Check server" onPress={onEditServer} />
               </View>
             </View>
           ) : (

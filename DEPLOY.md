@@ -33,7 +33,7 @@ eas login
 
 1. **Decide on the native modules.** The app uses `react-native-tcp-socket`, `expo-network`, `expo-secure-store` and Google Sign-In. None of these run in Expo Go, so test with a development build first (step 2).
 2. **Google Drive sign-in (optional).** Set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` (and the web/Android client IDs) in EAS environment variables, not in the repo. If unset, Drive shows as "not set up".
-3. **DICOMweb default URL.** `EXPO_PUBLIC_DICOMWEB_URL` is bundled into the app and visible to anyone, so don't put secrets in it. Users can override it in Settings.
+3. **DICOMweb default URL.** `EXPO_PUBLIC_DICOMWEB_URL` is bundled into the app and visible to anyone, so don't put secrets in it. It only creates the first server; users add and edit servers in the app.
 4. **Check the assets.** `assets/icon.png` must be 1024x1024 with no transparency. The Android adaptive icon files are already configured.
 5. **Confirm export compliance.** `app.config.ts` sets
    `ios.infoPlist.ITSAppUsesNonExemptEncryption` to `false`. This declares to Apple that
