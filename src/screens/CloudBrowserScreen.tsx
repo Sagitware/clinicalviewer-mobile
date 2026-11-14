@@ -43,16 +43,29 @@ export function CloudBrowserScreen({ provider, onBack, onImported }: Props) {
 
   useEffect(() => () => cancelImport(), []);
 
-  const handleError = useCallback((e: unknown) => {
-    if (e instanceof AuthExpiredError) setSignedIn(false);
-    if (!(e instanceof SignInCancelled)) setError(e instanceof Error ? e.message : String(e));
+  const signedOut = useCallback(() => {
+    setSignedIn(false);
+    setEntries(null);
   }, []);
+
+  const handleError = useCallback(
+    (e: unknown) => {
+      if (e instanceof AuthExpiredError) signedOut();
+      if (!(e instanceof SignInCancelled)) setError(e instanceof Error ? e.message : String(e));
+    },
+    [signedOut],
+  );
+
+  /** Changes folder; the listing effect below loads the new one. */
+  const navigate = (update: (p: CloudEntry[]) => CloudEntry[]) => {
+    setEntries(null);
+    setError(null);
+    setPath(update);
+  };
 
   useEffect(() => {
     if (!signedIn) return;
     let stale = false;
-    setEntries(null);
-    setError(null);
     provider
       .list(folder)
       .then((r) => !stale && setEntries(r))
@@ -171,8 +184,8 @@ export function CloudBrowserScreen({ provider, onBack, onImported }: Props) {
         title={folder?.name ?? provider.label}
         subtitle={subtitle}
         backLabel={path.length ? 'Up' : 'Import'}
-        onBack={() => (path.length ? setPath((p) => p.slice(0, -1)) : onBack())}
-        right={<Button label="Sign out" onPress={() => provider.signOut().then(() => { setSignedIn(false); setPath([]); })} />}
+        onBack={() => (path.length ? navigate((p) => p.slice(0, -1)) : onBack())}
+        right={<Button label="Sign out" onPress={() => provider.signOut().then(() => { signedOut(); setPath([]); })} />}
       />
       {error ? <Text style={[styles.error, styles.errorBanner]}>{error}</Text> : null}
       {!entries && !error ? <ActivityIndicator style={styles.spinner} color={colors.accent} /> : null}
@@ -197,7 +210,7 @@ export function CloudBrowserScreen({ provider, onBack, onImported }: Props) {
               </Pressable>
               <Pressable
                 style={styles.rowMain}
-                onPress={() => (item.kind === 'folder' ? setPath((p) => [...p, item]) : toggle(item))}
+                onPress={() => (item.kind === 'folder' ? navigate((p) => [...p, item]) : toggle(item))}
               >
                 <Text style={styles.name} numberOfLines={1}>
                   {item.name}

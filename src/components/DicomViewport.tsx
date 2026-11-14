@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import {
   Canvas,
@@ -60,11 +60,11 @@ export function useViewState(): ViewState {
 /** Fit the image to the viewport, centred. Callable from JS or the UI thread. */
 export function fitView(v: ViewState) {
   'worklet';
-  if (v.canvasW.value <= 0 || v.imgW.value <= 0) return;
-  const s = Math.min(v.canvasW.value / v.imgW.value, v.canvasH.value / v.imgH.value);
-  v.scale.value = s;
-  v.tx.value = (v.canvasW.value - v.imgW.value * s) / 2;
-  v.ty.value = (v.canvasH.value - v.imgH.value * s) / 2;
+  if (v.canvasW.get() <= 0 || v.imgW.get() <= 0) return;
+  const s = Math.min(v.canvasW.get() / v.imgW.get(), v.canvasH.get() / v.imgH.get());
+  v.scale.set(s);
+  v.tx.set((v.canvasW.get() - v.imgW.get() * s) / 2);
+  v.ty.set((v.canvasH.get() - v.imgH.get() * s) / 2);
 }
 
 interface Props {
@@ -78,12 +78,8 @@ interface Props {
 export function DicomViewport({ frame, view: v, tool, smooth, onStep }: Props) {
   const toolSV = useSharedValue(TOOL_INDEX[tool]);
   useEffect(() => {
-    toolSV.value = TOOL_INDEX[tool];
+    toolSV.set(TOOL_INDEX[tool]);
   }, [tool, toolSV]);
-
-  const stepRef = useRef(onStep);
-  stepRef.current = onStep;
-  const step = useCallback((d: number) => stepRef.current(d), []);
 
   const panStart = useSharedValue({ wc: 0, ww: 0, tx: 0, ty: 0, steps: 0 });
   const pinchStart = useSharedValue({ s: 1, tx: 0, ty: 0, fx: 0, fy: 0, k: 1, n: 2 });
@@ -93,87 +89,84 @@ export function DicomViewport({ frame, view: v, tool, smooth, onStep }: Props) {
   const pinched = useSharedValue(false);
 
   const gesture = useMemo(() => {
+    const anchorPinch = (e: { focalX: number; focalY: number; scale: number; numberOfPointers: number }) => {
+      'worklet';
+      pinchStart.set({
+        s: v.scale.get(),
+        tx: v.tx.get(),
+        ty: v.ty.get(),
+        fx: e.focalX,
+        fy: e.focalY,
+        k: e.scale,
+        n: e.numberOfPointers,
+      });
+    };
+
     const pan = Gesture.Pan()
       .maxPointers(1)
       .minDistance(2)
       .onBegin(() => {
-        pinched.value = false;
+        pinched.set(false);
       })
       .onStart(() => {
-        panStart.value = { wc: v.wc.value, ww: v.ww.value, tx: v.tx.value, ty: v.ty.value, steps: 0 };
-        panning.value = true;
+        panStart.set({ wc: v.wc.get(), ww: v.ww.get(), tx: v.tx.get(), ty: v.ty.get(), steps: 0 });
+        panning.set(true);
       })
       .onUpdate((e) => {
-        if (pinched.value) return;
-        const start = panStart.value;
-        const mode = toolSV.value;
+        if (pinched.get()) return;
+        const start = panStart.get();
+        const mode = toolSV.get();
         if (mode === 0) {
           // Horizontal drag = width, vertical drag = level. Sensitivity follows the current width.
           const k = Math.max(start.ww / 300, 0.25);
-          v.ww.value = Math.max(1, start.ww + e.translationX * k);
-          v.wc.value = start.wc + e.translationY * k;
+          v.ww.set(Math.max(1, start.ww + e.translationX * k));
+          v.wc.set(start.wc + e.translationY * k);
         } else if (mode === 1) {
-          v.tx.value = start.tx + e.translationX;
-          v.ty.value = start.ty + e.translationY;
+          v.tx.set(start.tx + e.translationX);
+          v.ty.set(start.ty + e.translationY);
         } else {
           const steps = Math.trunc(e.translationY / STEP_PX);
           if (steps !== start.steps) {
-            scheduleOnRN(step, steps - start.steps);
-            panStart.value = { ...start, steps };
+            scheduleOnRN(onStep, steps - start.steps);
+            panStart.set({ ...start, steps });
           }
         }
       })
       .onFinalize(() => {
-        panning.value = false;
+        panning.set(false);
       });
 
     // Pinch zooms about the fingers and also pans as they move, in every tool.
     const pinch = Gesture.Pinch()
       .onStart((e) => {
-        pinched.value = true;
+        pinched.set(true);
         // Undo what the pan did in its first few pixels before the second finger landed.
-        if (panning.value) {
-          const start = panStart.value;
-          if (toolSV.value === 0) {
-            v.ww.value = start.ww;
-            v.wc.value = start.wc;
-          } else if (toolSV.value === 1) {
-            v.tx.value = start.tx;
-            v.ty.value = start.ty;
+        if (panning.get()) {
+          const start = panStart.get();
+          if (toolSV.get() === 0) {
+            v.ww.set(start.ww);
+            v.wc.set(start.wc);
+          } else if (toolSV.get() === 1) {
+            v.tx.set(start.tx);
+            v.ty.set(start.ty);
           }
         }
-        pinchStart.value = {
-          s: v.scale.value,
-          tx: v.tx.value,
-          ty: v.ty.value,
-          fx: e.focalX,
-          fy: e.focalY,
-          k: e.scale,
-          n: e.numberOfPointers,
-        };
+        anchorPinch(e);
       })
       .onUpdate((e) => {
-        const p = pinchStart.value;
+        const p = pinchStart.get();
         // When a finger lifts, the focal point jumps to the remaining finger. Skip those updates,
         // and re-anchor when the finger count changes so the image doesn't jump.
         if (e.numberOfPointers !== p.n) {
-          pinchStart.value = {
-            s: v.scale.value,
-            tx: v.tx.value,
-            ty: v.ty.value,
-            fx: e.focalX,
-            fy: e.focalY,
-            k: e.scale,
-            n: e.numberOfPointers,
-          };
+          anchorPinch(e);
           return;
         }
         if (e.numberOfPointers < 2) return;
         const s = Math.min(Math.max((p.s * e.scale) / p.k, 0.1), 40);
         const r = s / p.s;
-        v.scale.value = s;
-        v.tx.value = e.focalX - (p.fx - p.tx) * r;
-        v.ty.value = e.focalY - (p.fy - p.ty) * r;
+        v.scale.set(s);
+        v.tx.set(e.focalX - (p.fx - p.tx) * r);
+        v.ty.set(e.focalY - (p.fy - p.ty) * r);
       });
 
     const doubleTap = Gesture.Tap()
@@ -181,12 +174,12 @@ export function DicomViewport({ frame, view: v, tool, smooth, onStep }: Props) {
       .onEnd(() => fitView(v));
 
     return Gesture.Simultaneous(pan, pinch, doubleTap);
-  }, [v, toolSV, panStart, pinchStart, panning, pinched, step]);
+  }, [v, toolSV, panStart, pinchStart, panning, pinched, onStep]);
 
   const transform = useDerivedValue(() => [
-    { translateX: v.tx.value },
-    { translateY: v.ty.value },
-    { scale: v.scale.value },
+    { translateX: v.tx.get() },
+    { translateY: v.ty.get() },
+    { scale: v.scale.get() },
   ]);
 
   const gray = frame?.kind === 'gray' ? frame : null;
@@ -200,12 +193,12 @@ export function DicomViewport({ frame, view: v, tool, smooth, onStep }: Props) {
   const uniforms = useDerivedValue(
     () => ({
       size: [width, height],
-      wc: v.wc.value,
-      ww: v.ww.value,
+      wc: v.wc.get(),
+      ww: v.ww.get(),
       slope,
       intercept,
       offset,
-      invert: v.invert.value,
+      invert: v.invert.get(),
       smooth: smoothFlag,
     }),
     [width, height, slope, intercept, offset, smoothFlag],
@@ -215,7 +208,7 @@ export function DicomViewport({ frame, view: v, tool, smooth, onStep }: Props) {
 
   // Fit on the UI thread once both the canvas and the image sizes are known, in either order.
   useAnimatedReaction(
-    () => v.canvasW.value + ':' + v.canvasH.value + ':' + v.imgW.value + ':' + v.imgH.value,
+    () => v.canvasW.get() + ':' + v.canvasH.get() + ':' + v.imgW.get() + ':' + v.imgH.get(),
     (cur, prev) => {
       if (cur !== prev) fitView(v);
     },
@@ -223,9 +216,9 @@ export function DicomViewport({ frame, view: v, tool, smooth, onStep }: Props) {
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width: w, height: h } = e.nativeEvent.layout;
-    const changed = v.canvasW.value !== w || v.canvasH.value !== h;
-    v.canvasW.value = w;
-    v.canvasH.value = h;
+    const changed = v.canvasW.get() !== w || v.canvasH.get() !== h;
+    v.canvasW.set(w);
+    v.canvasH.set(h);
     // Re-centre whenever the viewport size settles or changes (rotation, toolbars appearing).
     if (changed) fitView(v);
   };

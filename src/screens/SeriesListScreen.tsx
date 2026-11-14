@@ -32,8 +32,6 @@ export function SeriesListScreen({ title, subtitle, backLabel, load, onBack, onO
 
   useEffect(() => {
     let cancelled = false;
-    setError(null);
-    setItems(null);
     load()
       .then((r) => {
         if (cancelled) return;
@@ -45,6 +43,12 @@ export function SeriesListScreen({ title, subtitle, backLabel, load, onBack, onO
       cancelled = true;
     };
   }, [load, attempt]);
+
+  const retry = () => {
+    setError(null);
+    setItems(null);
+    setAttempt((a) => a + 1);
+  };
 
   const open = async (item: SeriesItem) => {
     if (opening) return;
@@ -66,7 +70,7 @@ export function SeriesListScreen({ title, subtitle, backLabel, load, onBack, onO
       {error ? (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
-          {!items ? <Button label="Try again" onPress={() => setAttempt((a) => a + 1)} /> : null}
+          {!items ? <Button label="Try again" onPress={retry} /> : null}
         </View>
       ) : null}
       {!items && !error ? <ActivityIndicator style={styles.spinner} color={colors.accent} /> : null}

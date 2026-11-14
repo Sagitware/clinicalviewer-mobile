@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Linking } from 'react-native';
 import { File } from 'expo-file-system';
 import { importBytes, type LocalImportResult } from './sources';
@@ -38,7 +38,9 @@ export async function readIncomingFile(url: string): Promise<LocalImportResult> 
 export function useIncomingFiles(onFile: (url: string, name: string) => void) {
   const handled = useRef(new Set<string>());
   const callback = useRef(onFile);
-  callback.current = onFile;
+  useLayoutEffect(() => {
+    callback.current = onFile;
+  });
 
   useEffect(() => {
     const handle = (url: string | null | undefined) => {

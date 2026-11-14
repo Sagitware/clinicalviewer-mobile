@@ -24,14 +24,17 @@ export function LibraryScreen({ onOpenStudy, onOpenServer, onOpenFiles, onSettin
   const [studies, setStudies] = useState<SavedStudy[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      setError(null);
-      setStudies(await listStudies());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
+  const refresh = useCallback(
+    () =>
+      listStudies().then(
+        (found) => {
+          setError(null);
+          setStudies(found);
+        },
+        (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
+      ),
+    [],
+  );
 
   useEffect(() => {
     refresh();

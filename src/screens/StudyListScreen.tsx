@@ -18,28 +18,37 @@ interface Props {
 export function StudyListScreen({ client, onOpenStudy, onOpenFiles, onBack, onSettings }: Props) {
   const [query, setQuery] = useState('');
   const [studies, setStudies] = useState<StudySummary[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const search = useCallback(
-    async (patientName: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        setStudies(await client.searchStudies({ patientName }));
-      } catch (e) {
-        setStudies([]);
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setLoading(false);
-      }
-    },
+  // Sets state only once the server answers, so it can run straight from an effect.
+  const fetchStudies = useCallback(
+    (patientName: string) =>
+      client
+        .searchStudies({ patientName })
+        .then(
+          (found) => {
+            setError(null);
+            setStudies(found);
+          },
+          (e: unknown) => {
+            setStudies([]);
+            setError(e instanceof Error ? e.message : String(e));
+          },
+        )
+        .finally(() => setLoading(false)),
     [client],
   );
 
+  const search = (patientName: string) => {
+    setLoading(true);
+    setError(null);
+    fetchStudies(patientName);
+  };
+
   useEffect(() => {
-    search('');
-  }, [search]);
+    fetchStudies('');
+  }, [fetchStudies]);
 
   return (
     <View style={styles.screen}>

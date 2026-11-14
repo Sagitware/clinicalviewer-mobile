@@ -41,7 +41,8 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
 
   const [index, setIndex] = useState(0);
   const [frame, setFrame] = useState<LoadedFrame | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The slice whose load last finished, successfully or not.
+  const [settled, setSettled] = useState(-1);
   const [error, setError] = useState<string | null>(null);
   const [tool, setTool] = useState<Tool>('window');
   const [smooth, setSmooth] = useState(true);
@@ -53,8 +54,8 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
 
   const applyWindow = useCallback(
     (w: number, c: number) => {
-      view.ww.value = w;
-      view.wc.value = c;
+      view.ww.set(w);
+      view.wc.set(c);
     },
     [view],
   );
@@ -65,8 +66,8 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
       setFrame(f);
       if (f.width !== shownSize.current.w || f.height !== shownSize.current.h) {
         shownSize.current = { w: f.width, h: f.height };
-        view.imgW.value = f.width;
-        view.imgH.value = f.height;
+        view.imgW.set(f.width);
+        view.imgH.set(f.height);
         fitView(view);
       }
       if (!defaults.current) {
@@ -76,7 +77,7 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
             : { w: 256, c: 128, invert: false };
         defaults.current = d;
         applyWindow(d.w, d.c);
-        view.invert.value = d.invert ? 1 : 0;
+        view.invert.set(d.invert ? 1 : 0);
         setInverted(d.invert);
       }
     },
@@ -85,18 +86,11 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    const cached = cache.peek(index);
-    if (cached) {
-      show(cached);
-      setLoading(false);
-    } else {
-      setLoading(true);
-      cache
-        .load(index)
-        .then((f) => !cancelled && show(f))
-        .catch((e: unknown) => !cancelled && setError(e instanceof Error ? e.message : String(e)))
-        .finally(() => !cancelled && setLoading(false));
-    }
+    cache
+      .load(index)
+      .then((f) => !cancelled && show(f))
+      .catch((e: unknown) => !cancelled && setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => !cancelled && setSettled(index));
     cache.prefetch(index);
     return () => {
       cancelled = true;
@@ -117,9 +111,9 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
   // Mirror window/zoom onto the overlay without re-rendering on every gesture frame.
   useAnimatedReaction(
     () => ({
-      w: Math.round(view.ww.value),
-      c: Math.round(view.wc.value),
-      zoom: Math.round(view.scale.value * 100),
+      w: Math.round(view.ww.get()),
+      c: Math.round(view.wc.get()),
+      zoom: Math.round(view.scale.get() * 100),
     }),
     (cur, prev) => {
       if (!prev || cur.w !== prev.w || cur.c !== prev.c || cur.zoom !== prev.zoom) {
@@ -130,7 +124,7 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
 
   const toggleInvert = () => {
     const next = !inverted;
-    view.invert.value = next ? 1 : 0;
+    view.invert.set(next ? 1 : 0);
     setInverted(next);
   };
 
@@ -138,13 +132,15 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
     const d = defaults.current;
     if (d) {
       applyWindow(d.w, d.c);
-      view.invert.value = d.invert ? 1 : 0;
+      view.invert.set(d.invert ? 1 : 0);
       setInverted(d.invert);
     }
     fitView(view);
   };
 
   const isGray = frame?.kind !== 'color';
+  // Cached slices show within a microtask, so only uncached ones get a spinner (keeps cine flicker-free).
+  const loading = settled !== index && !cache.has(index);
 
   return (
     <View style={styles.screen}>

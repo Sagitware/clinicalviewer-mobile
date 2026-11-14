@@ -60,7 +60,7 @@ export function SettingsScreen({ config, onSave, onBack }: Props) {
           />
         </Field>
         <Text style={styles.hint}>
-          Use your computer's network address, not localhost. On the Android emulator, 10.0.2.2 reaches the host machine.
+          Use your computer&apos;s network address, not localhost. On the Android emulator, 10.0.2.2 reaches the host machine.
         </Text>
         <Field label="Username">
           <TextInput

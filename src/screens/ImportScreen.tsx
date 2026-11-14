@@ -80,7 +80,7 @@ export function ImportScreen({ onBack, onPickDevice, onOpenCloud, onImportUrl }:
         ))}
         <Text style={styles.note}>
           Files are downloaded into memory for viewing and are not saved on this device. Store patient images only in
-          accounts covered by your organization's business associate agreement.
+          accounts covered by your organization&apos;s business associate agreement.
         </Text>
       </ScrollView>
     </View>

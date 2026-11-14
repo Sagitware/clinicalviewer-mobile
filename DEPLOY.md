@@ -96,6 +96,8 @@ eas device:create                                        # registers an iPhone f
 
 ## 3. iOS: App Store
 
+> For the full, up-to-date iOS walkthrough (SDK 58, Node 22, TestFlight checks and review notes), see [DEPLOY-IOS.md](DEPLOY-IOS.md).
+
 ### 3.1 Apple setup (one time)
 
 1. Enrol in the Apple Developer Program and wait for approval.
