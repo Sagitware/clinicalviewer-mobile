@@ -1,12 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useAnimatedReaction } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DicomViewport, fitView, useViewState, type Tool } from '../components/DicomViewport';
+import { MeasureMenu } from '../components/MeasureMenu';
+import { TextPrompt } from '../components/TextPrompt';
 import { FrameCache } from '../lib/frameCache';
-import type { LoadedFrame } from '../lib/skiaFrames';
+import {
+  ellipseStats,
+  TOOL_LABELS,
+  withPoints,
+  type Annotation,
+  type MeasureTool,
+  type NewAnnotation,
+} from '../lib/measure';
+import { readModalityValues, type LoadedFrame } from '../lib/skiaFrames';
 import type { SliceSource } from '../lib/sources';
 import { colors, space, type } from '../theme';
 
@@ -26,6 +36,21 @@ const TOOL_BUTTONS: { id: Tool; label: string; glyph: string; pos: 'tl' | 'bl' |
 ];
 
 const CINE_FPS = 12;
+
+const MEASURE_HINTS: Record<MeasureTool, string> = {
+  length: 'Drag between two points',
+  angle: 'Drag the first arm, then drag the second',
+  ellipse: 'Drag across the region',
+  arrow: 'Drag from the point of interest, then add a label',
+};
+
+const isMeasureTool = (t: Tool): t is MeasureTool => t in TOOL_LABELS;
+
+/** Fills in what depends on the pixels: ellipse statistics, for grayscale frames. */
+function measured(ann: Annotation, f: LoadedFrame | null): Annotation {
+  if (ann.kind !== 'ellipse' || f?.kind !== 'gray') return ann;
+  return { ...ann, stats: ellipseStats(ann.a, ann.b, f.width, f.height, (x, y, w, h) => readModalityValues(f, x, y, w, h)) };
+}
 
 interface Props {
   source: SliceSource;
@@ -51,6 +76,19 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
   const [readout, setReadout] = useState({ w: 0, c: 0, zoom: 100 });
   const defaults = useRef<{ w: number; c: number; invert: boolean } | null>(null);
   const shownSize = useRef({ w: 0, h: 0 });
+  // The slice the frame on screen belongs to (index runs ahead while a slice loads).
+  const [shownIndex, setShownIndex] = useState(0);
+  // Per slice, for this viewing session.
+  const [annotations, setAnnotations] = useState<Map<number, Annotation[]>>(() => new Map());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [labeling, setLabeling] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const nextId = useRef(1);
+  // Read by onDraw, which must stay stable or the gesture would be rebuilt on every slice.
+  const latest = useRef({ frame, shownIndex });
+  useLayoutEffect(() => {
+    latest.current = { frame, shownIndex };
+  });
 
   const applyWindow = useCallback(
     (w: number, c: number) => {
@@ -88,7 +126,11 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
     let cancelled = false;
     cache
       .load(index)
-      .then((f) => !cancelled && show(f))
+      .then((f) => {
+        if (cancelled) return;
+        show(f);
+        setShownIndex(index);
+      })
       .catch((e: unknown) => !cancelled && setError(e instanceof Error ? e.message : String(e)))
       .finally(() => !cancelled && setSettled(index));
     cache.prefetch(index);
@@ -122,6 +164,43 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
     },
   );
 
+  const updateSlice = useCallback((slice: number, update: (list: Annotation[]) => Annotation[]) => {
+    setAnnotations((prev) => {
+      const next = new Map(prev);
+      const list = update(prev.get(slice) ?? []);
+      if (list.length) next.set(slice, list);
+      else next.delete(slice);
+      return next;
+    });
+  }, []);
+
+  const onDraw = useCallback(
+    (drawn: NewAnnotation) => {
+      const { frame: f, shownIndex: slice } = latest.current;
+      const id = String(nextId.current++);
+      const ann = measured({ ...drawn, id } as Annotation, f);
+      updateSlice(slice, (list) => [...list, ann]);
+      if (ann.kind === 'arrow') setLabeling(id);
+    },
+    [updateSlice],
+  );
+
+  const onEdit = useCallback(
+    (id: string, pts: number[]) => {
+      const { frame: f, shownIndex: slice } = latest.current;
+      updateSlice(slice, (list) => list.map((a) => (a.id === id ? measured(withPoints(a, pts), f) : a)));
+    },
+    [updateSlice],
+  );
+
+  const setArrowText = (id: string, text: string) =>
+    updateSlice(shownIndex, (list) => list.map((a) => (a.id === id && a.kind === 'arrow' ? { ...a, text } : a)));
+
+  const shownAnnotations = annotations.get(shownIndex) ?? [];
+  // Only annotations on the image shown can be selected; changing slice drops the selection.
+  const selected = shownAnnotations.find((a) => a.id === selectedId) ?? null;
+  const measureTool = isMeasureTool(tool) ? tool : null;
+
   const toggleInvert = () => {
     const next = !inverted;
     view.invert.set(next ? 1 : 0);
@@ -154,7 +233,19 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
       </View>
 
       <View style={styles.viewport}>
-        <DicomViewport frame={frame} view={view} tool={tool} smooth={smooth} onStep={step} />
+        <DicomViewport
+          frame={frame}
+          view={view}
+          tool={tool}
+          smooth={smooth}
+          modality={source.modality}
+          annotations={shownAnnotations}
+          selectedId={selected?.id ?? null}
+          onStep={step}
+          onDraw={onDraw}
+          onSelect={setSelectedId}
+          onEdit={onEdit}
+        />
 
         <View style={styles.overlay} pointerEvents="none">
           <View style={[styles.overlayRow, styles.rowTop]}>
@@ -184,6 +275,50 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
           </View>
         </View>
 
+        {selected ? (
+          <View style={styles.hint} pointerEvents="box-none">
+            <View style={styles.selectionBar}>
+              <Text style={styles.selectionText}>{TOOL_LABELS[selected.kind]}: drag a handle or the shape</Text>
+              <View style={styles.selectionActions}>
+                {selected.kind === 'arrow' ? (
+                  <Pressable onPress={() => setLabeling(selected.id)} style={styles.selectionBtn} accessibilityRole="button">
+                    <Text style={styles.selectionBtnText}>Edit label</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={() => {
+                    updateSlice(shownIndex, (list) => list.filter((a) => a.id !== selected.id));
+                    setSelectedId(null);
+                  }}
+                  style={styles.selectionBtn}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.selectionBtnText, styles.danger]}>Delete</Text>
+                </Pressable>
+                <Pressable onPress={() => setSelectedId(null)} style={styles.selectionBtn} accessibilityRole="button">
+                  <Text style={[styles.selectionBtnText, styles.done]}>Done</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        ) : measureTool ? (
+          <View style={styles.hint} pointerEvents="none">
+            <Text style={styles.hintText}>
+              {TOOL_LABELS[measureTool]}: {MEASURE_HINTS[measureTool]}
+            </Text>
+          </View>
+        ) : null}
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Measure and annotate"
+          accessibilityState={{ selected: measureTool != null, expanded: menuOpen }}
+          onPress={() => setMenuOpen((o) => !o)}
+          style={[styles.toolBtn, styles.tr, measureTool && styles.toolBtnActive]}
+        >
+          <Text style={[styles.toolGlyph, measureTool && styles.toolGlyphActive]}>✎</Text>
+        </Pressable>
+
         {TOOL_BUTTONS.map((t) => (
           <Pressable
             key={t.id}
@@ -206,6 +341,16 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
         {loading && frame ? (
           <ActivityIndicator style={styles.cornerSpinner} color={colors.overlay} size="small" />
         ) : null}
+        {menuOpen ? (
+          <MeasureMenu
+            active={measureTool}
+            count={shownAnnotations.length}
+            onPick={setTool}
+            onUndo={() => updateSlice(shownIndex, (list) => list.slice(0, -1))}
+            onClear={() => updateSlice(shownIndex, () => [])}
+            onClose={() => setMenuOpen(false)}
+          />
+        ) : null}
         {error ? (
           <View style={styles.center} pointerEvents="none">
             <Text style={styles.errorTitle}>Image {index + 1} could not be shown</Text>
@@ -213,6 +358,19 @@ export function ViewerScreen({ source, backLabel, onBack }: Props) {
           </View>
         ) : null}
       </View>
+
+      {labeling ? (
+        <TextPrompt
+          title="Arrow label"
+          placeholder="For example: lesion"
+          initialValue={(shownAnnotations.find((a) => a.id === labeling && a.kind === 'arrow') as { text?: string } | undefined)?.text}
+          onSubmit={(text) => {
+            setArrowText(labeling, text);
+            setLabeling(null);
+          }}
+          onCancel={() => setLabeling(null)}
+        />
+      ) : null}
 
       <View style={[styles.controls, { paddingBottom: insets.bottom + space(2) }]}>
         {source.count > 1 ? (
@@ -280,7 +438,7 @@ const styles = StyleSheet.create({
   topTitle: { flex: 1, color: colors.text, fontSize: type.title, fontWeight: '600', textAlign: 'right' },
   viewport: { flex: 1, backgroundColor: colors.viewport },
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, padding: space(2), justifyContent: 'space-between' },
-  rowTop: { paddingLeft: 52 },
+  rowTop: { paddingHorizontal: 52 },
   rowBottom: { paddingHorizontal: 52 },
   toolBtn: {
     position: 'absolute',
@@ -297,6 +455,7 @@ const styles = StyleSheet.create({
   toolGlyph: { color: colors.overlay, fontSize: 24 },
   toolGlyphActive: { color: colors.accent },
   tl: { top: space(2), left: space(2) },
+  tr: { top: space(2), right: space(2) },
   bl: { bottom: space(2), left: space(2) },
   br: { bottom: space(2), right: space(2) },
   overlayRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: space(4) },
@@ -308,6 +467,32 @@ const styles = StyleSheet.create({
     textShadowColor: '#000',
     textShadowRadius: 2,
   },
+  hint: { position: 'absolute', top: space(14), left: space(14), right: space(14), alignItems: 'center' },
+  hintText: {
+    color: colors.text,
+    fontSize: type.small,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: space(2),
+    paddingVertical: space(1),
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  selectionBar: {
+    backgroundColor: 'rgba(11,22,32,0.92)',
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+    paddingHorizontal: space(3),
+    paddingVertical: space(2),
+    gap: space(2),
+    alignItems: 'center',
+  },
+  selectionText: { color: colors.muted, fontSize: type.small },
+  selectionActions: { flexDirection: 'row', gap: space(2) },
+  selectionBtn: { paddingHorizontal: space(3), paddingVertical: space(1.5), borderRadius: 6, backgroundColor: colors.panel },
+  selectionBtnText: { color: colors.text, fontSize: type.small, fontWeight: '600' },
+  danger: { color: colors.danger },
+  done: { color: colors.accent },
   center: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', padding: space(8) },
   centerText: { color: colors.muted, marginTop: space(2), fontSize: type.small },
   cornerSpinner: { position: 'absolute', top: space(12), right: space(3) },

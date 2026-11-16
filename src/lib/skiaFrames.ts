@@ -14,8 +14,9 @@ export type LoadedFrame =
       windowCenter: number;
       windowWidth: number;
       invert: boolean;
+      pixelSpacing?: [number, number];
     }
-  | { kind: 'color'; width: number; height: number; image: SkImage };
+  | { kind: 'color'; width: number; height: number; image: SkImage; pixelSpacing?: [number, number] };
 
 function makeImage(
   bytes: Uint8Array,
@@ -34,6 +35,9 @@ function makeImage(
   return image;
 }
 
+/** 1x1 stand-in for hi/lo before the first frame, so the shader can stay mounted. */
+export const EMPTY_PLANE = makeImage(new Uint8Array(1), 1, 1, ColorType.Alpha_8, AlphaType.Premul, 1);
+
 export function toLoadedFrame(d: DecodedFrame): LoadedFrame {
   if (d.kind === 'color') {
     return {
@@ -41,6 +45,7 @@ export function toLoadedFrame(d: DecodedFrame): LoadedFrame {
       width: d.width,
       height: d.height,
       image: makeImage(d.rgba, d.width, d.height, ColorType.RGBA_8888, AlphaType.Opaque, 4),
+      pixelSpacing: d.pixelSpacing,
     };
   }
   const { hi, lo, ...rest } = d;
@@ -49,6 +54,26 @@ export function toLoadedFrame(d: DecodedFrame): LoadedFrame {
     hi: makeImage(hi, d.width, d.height, ColorType.Alpha_8, AlphaType.Premul, 1),
     lo: makeImage(lo, d.width, d.height, ColorType.Alpha_8, AlphaType.Premul, 1),
   };
+}
+
+/**
+ * Modality values (after rescale) of a box of pixels, row by row, read back from the
+ * frame's two planes exactly as the shader rebuilds them. Null if the read fails.
+ */
+export function readModalityValues(
+  f: Extract<LoadedFrame, { kind: 'gray' }>,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): Float64Array | null {
+  const info = { width: w, height: h, colorType: ColorType.Alpha_8, alphaType: AlphaType.Premul };
+  const hi = f.hi.readPixels(x, y, info);
+  const lo = f.lo.readPixels(x, y, info);
+  if (!hi || !lo || hi.length < w * h || lo.length < w * h) return null;
+  const out = new Float64Array(w * h);
+  for (let i = 0; i < out.length; i++) out[i] = (hi[i] * 256 + lo[i] + f.offset) * f.slope + f.intercept;
+  return out;
 }
 
 /**

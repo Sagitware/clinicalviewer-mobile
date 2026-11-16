@@ -20,6 +20,8 @@ export const Tag = {
   InstanceNumber: '00200013',
   ImagePositionPatient: '00200032',
   ImageOrientationPatient: '00200037',
+  ImagerPixelSpacing: '00181164',
+  PixelSpacing: '00280030',
   NumberOfStudyRelatedInstances: '00201208',
   NumberOfSeriesRelatedInstances: '00201209',
   SamplesPerPixel: '00280002',

@@ -7,7 +7,7 @@ import { expandArchives, type NamedBytes } from './archive';
 import dicomParser from 'dicom-parser';
 import type { DicomwebClient, SeriesSummary, StudySummary } from './dicomClient';
 import { Tag, formatDate, formatPersonName, getNumber, getNumbers, getString, type DicomJson } from './dicomJson';
-import { decodeFrame, frameByteLength, type DecodedFrame, type PixelMeta } from './pixels';
+import { decodeFrame, frameByteLength, toSpacing, type DecodedFrame, type PixelMeta } from './pixels';
 
 export interface SliceSource {
   readonly count: number;
@@ -53,6 +53,7 @@ function metaFromJson(ds: DicomJson): PixelMeta {
     intercept: getNumber(ds, Tag.RescaleIntercept) ?? 0,
     windowCenter: getNumber(ds, Tag.WindowCenter),
     windowWidth: getNumber(ds, Tag.WindowWidth),
+    pixelSpacing: toSpacing(getNumbers(ds, Tag.PixelSpacing)) ?? toSpacing(getNumbers(ds, Tag.ImagerPixelSpacing)),
   };
 }
 
@@ -174,6 +175,9 @@ export function importDicomBuffers(files: NamedBytes[], initialSkipped: LocalImp
         intercept: float('x00281052') ?? 0,
         windowCenter: float('x00281050'),
         windowWidth: float('x00281051'),
+        pixelSpacing:
+          toSpacing(ds.string('x00280030')?.split('\\').map(Number)) ??
+          toSpacing(ds.string('x00181164')?.split('\\').map(Number)),
       };
       const frameLen = frameByteLength(meta);
       const frames = Number(ds.intString('x00280008') ?? 1) || 1;
