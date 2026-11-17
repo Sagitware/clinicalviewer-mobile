@@ -23,7 +23,7 @@ const ANDROID_MIME_TYPES = [
 const config: ExpoConfig = {
   name: 'fig-dicom',
   slug: 'clinicalview-mobile',
-  version: '1.1.0',
+  version: '1.1.1',
   orientation: 'default',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
