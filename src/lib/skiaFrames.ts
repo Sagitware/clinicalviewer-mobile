@@ -35,8 +35,13 @@ function makeImage(
   return image;
 }
 
+/** One byte plane (the high or low bytes of a grayscale frame) as an image the shader can sample. */
+export function bytePlane(bytes: Uint8Array, width: number, height: number): SkImage {
+  return makeImage(bytes, width, height, ColorType.Alpha_8, AlphaType.Premul, 1);
+}
+
 /** 1x1 stand-in for hi/lo before the first frame, so the shader can stay mounted. */
-export const EMPTY_PLANE = makeImage(new Uint8Array(1), 1, 1, ColorType.Alpha_8, AlphaType.Premul, 1);
+export const EMPTY_PLANE = bytePlane(new Uint8Array(1), 1, 1);
 
 export function toLoadedFrame(d: DecodedFrame): LoadedFrame {
   if (d.kind === 'color') {
@@ -51,8 +56,8 @@ export function toLoadedFrame(d: DecodedFrame): LoadedFrame {
   const { hi, lo, ...rest } = d;
   return {
     ...rest,
-    hi: makeImage(hi, d.width, d.height, ColorType.Alpha_8, AlphaType.Premul, 1),
-    lo: makeImage(lo, d.width, d.height, ColorType.Alpha_8, AlphaType.Premul, 1),
+    hi: bytePlane(hi, d.width, d.height),
+    lo: bytePlane(lo, d.width, d.height),
   };
 }
 

@@ -15,9 +15,15 @@ on the phone.
   so dragging W/L runs at display refresh rate on the UI thread.
 - Gestures: one-finger drag does the selected tool (Window, Pan, Scroll), pinch zooms
   and pans in every tool, double-tap fits the image.
-- Slice slider, cine (12 fps), invert, smoothing toggle, reset, CT presets
+- Slice slider, cine (12 fps), invert, smoothing toggle, and one **W/L** button whose menu holds reset and the CT presets
   (soft tissue, lung, bone, brain, angio, liver).
 - Overlay: patient, date, modality, series, image number, W/L, zoom.
+- Measurements and annotations (top-right menu): length, angle, ellipse ROI, arrow with label.
+- MPR (the **MPR** button under the slice slider): axial, coronal and sagittal views of a
+  CT or MR stack, linked by a crosshair. Tap or drag in one view to move the other two;
+  double-tap a view (or tap its name) to swap it with the main view, and double-tap the
+  main view to bring axial back. Views follow radiological convention
+  whatever the acquisition plane, with patient direction letters on each edge.
 - Import from this device, Google Drive or Dropbox: individual files, whole folders
   (subfolders included) or `.zip` archives. Files are grouped by series.
 - Prefetch of ±24 slices around the current one, LRU cache of 96 frames.
@@ -189,6 +195,8 @@ src/lib/dicomJson.ts            DICOM JSON tag helpers
 src/lib/pixels.ts               pixel decoding: signed/unsigned 8/16-bit, MONOCHROME1/2, RGB, YBR_FULL
 src/lib/skiaFrames.ts           GPU upload + the window/level shader
 src/lib/frameCache.ts           LRU cache and prefetch queue
+src/lib/volume.ts               MPR: stack geometry checks, volume loading, reslicing, view orientation
+src/lib/measure.ts              measurement and annotation maths
 src/lib/sources.ts              SliceSource for DICOMweb series, and the shared import path for files
 src/lib/archive.ts              in-memory zip expansion
 src/lib/localDb.ts              SQLite library of imported files
@@ -198,7 +206,8 @@ src/lib/cloud/importer.ts       folder scan, size check, parallel download
 src/lib/incomingFiles.ts        files opened from Mail, Gmail, Files ("Open in fig-dicom")
 src/lib/settings.ts             server list and last location, in the device keychain
 src/components/DicomViewport.tsx Skia canvas and gestures
-src/screens/*                   Studies, Series, Viewer, Servers, Import, Cloud browser
+src/components/MprPane.tsx      one MPR view: its cut, reference lines and gestures
+src/screens/*                   Studies, Series, Viewer, MPR, Servers, Import, Cloud browser
 ```
 
 ## How rendering works
@@ -229,7 +238,14 @@ Reanimated shared values, so gestures never cross the JS bridge.
 - Local files must be uncompressed (Implicit or Explicit VR Little Endian). Compressed
   files are listed as skipped; send them to Orthanc and open them from Studies.
 - Palette colour, 32-bit and 1-bit images are not rendered.
-- Pixel aspect ratio is assumed square; measurements and annotations are not included yet.
+- Pixel aspect ratio is assumed square in the stack viewer. Measurements and annotations
+  are kept for the viewing session only, and are not available in MPR.
+- MPR needs a grayscale series whose slices are parallel, evenly spaced, stacked straight
+  and share one size and one set of rescale values. Tilted-gantry CT, series with missing
+  slices, multi-frame instances and PET series with per-slice rescale are refused with the
+  reason. The views are cut along the acquisition's own axes (no oblique planes), and the
+  whole series is loaded into memory first: two bytes per voxel, up to about 256 MB, above
+  which each slice is averaged down by a whole factor (the screen says when).
 - HTTP to a server on the local network works in development builds on both platforms
   (iOS has a local-networking exception in `app.config.ts`; Android debug builds allow
   cleartext). Release builds on Android block HTTP, and any server reached over the
@@ -241,5 +257,4 @@ Reanimated shared values, so gestures never cross the JS bridge.
 - Read-only display of annotations saved by the web workstation.
 - HTJ2K for AWS HealthImaging: either a native decoder module, or ask Orthanc / a small
   proxy to transcode, which keeps the app unchanged.
-- MPR on mobile is feasible with the same shader approach but needs a 3D texture
-  strategy; worth a separate design pass.
+- Oblique MPR planes, measurements in MPR, and MIP / slab thickness.

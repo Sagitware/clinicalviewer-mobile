@@ -8,6 +8,7 @@ import dicomParser from 'dicom-parser';
 import type { DicomwebClient, SeriesSummary, StudySummary } from './dicomClient';
 import { Tag, formatDate, formatPersonName, getNumber, getNumbers, getString, type DicomJson } from './dicomJson';
 import { decodeFrame, frameByteLength, toSpacing, type DecodedFrame, type PixelMeta } from './pixels';
+import type { SliceGeometry } from './volume';
 
 export interface SliceSource {
   readonly count: number;
@@ -15,6 +16,8 @@ export interface SliceSource {
   readonly seriesDescription: string;
   readonly patientName: string;
   readonly studyDate: string;
+  /** Where each slice sits in the patient, in slice order. MPR needs it. */
+  readonly geometry?: SliceGeometry[];
   load(index: number): Promise<DecodedFrame>;
 }
 
@@ -36,6 +39,8 @@ function sortSlices<T extends SliceRef>(refs: T[]): T[] {
   }
   return [...refs].sort((a, b) => a.instanceNumber - b.instanceNumber || a.frame - b.frame);
 }
+
+const geometryOf = (refs: SliceRef[]): SliceGeometry[] => refs.map((r) => ({ position: r.position, orientation: r.orientation }));
 
 /* ---------- Remote (DICOMweb) ---------- */
 
@@ -89,6 +94,7 @@ export async function openRemoteSeries(
     seriesDescription: series.description,
     patientName: study.patientName,
     studyDate: study.studyDate,
+    geometry: geometryOf(sorted),
     async load(i) {
       const r = sorted[i];
       const bytes = await client.frame(study.studyUID, series.seriesUID, r.sop, r.frame);
@@ -234,6 +240,7 @@ export function importDicomBuffers(files: NamedBytes[], initialSkipped: LocalImp
         seriesDescription: g.description,
         patientName: g.patientName,
         studyDate: g.studyDate,
+        geometry: geometryOf(sorted),
         load: async (i) => decodeFrame(sorted[i].bytes, sorted[i].meta),
       },
     });
