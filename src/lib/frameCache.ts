@@ -27,6 +27,11 @@ export class FrameCache {
     return f;
   }
 
+  /** Whether frame i is cached, without touching its LRU position. */
+  has(i: number): boolean {
+    return this.cache.has(i);
+  }
+
   load(i: number): Promise<LoadedFrame> {
     const cached = this.peek(i);
     if (cached) return Promise.resolve(cached);

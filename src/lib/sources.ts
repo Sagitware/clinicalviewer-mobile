@@ -7,7 +7,9 @@ import { expandArchives, type NamedBytes } from './archive';
 import dicomParser from 'dicom-parser';
 import type { DicomwebClient, SeriesSummary, StudySummary } from './dicomClient';
 import { Tag, formatDate, formatPersonName, getNumber, getNumbers, getString, type DicomJson } from './dicomJson';
-import { decodeFrame, frameByteLength, type DecodedFrame, type PixelMeta } from './pixels';
+import { decodeFrame, frameByteLength, toSpacing, type DecodedFrame, type PixelMeta } from './pixels';
+import { middleIndex } from './thumbnail';
+import type { SliceGeometry } from './volume';
 
 export interface SliceSource {
   readonly count: number;
@@ -15,10 +17,12 @@ export interface SliceSource {
   readonly seriesDescription: string;
   readonly patientName: string;
   readonly studyDate: string;
+  /** Where each slice sits in the patient, in slice order. MPR needs it. */
+  readonly geometry?: SliceGeometry[];
   load(index: number): Promise<DecodedFrame>;
 }
 
-interface SliceRef {
+export interface SliceRef {
   instanceNumber: number;
   frame: number;
   position?: number[];
@@ -26,7 +30,7 @@ interface SliceRef {
 }
 
 /** Sort along the slice normal when geometry exists, else by instance number. */
-function sortSlices<T extends SliceRef>(refs: T[]): T[] {
+export function sortSlices<T extends SliceRef>(refs: T[]): T[] {
   const o = refs.find((r) => r.orientation?.length === 6)?.orientation;
   const geometric = o && refs.every((r) => r.position?.length === 3);
   if (o && geometric) {
@@ -36,6 +40,8 @@ function sortSlices<T extends SliceRef>(refs: T[]): T[] {
   }
   return [...refs].sort((a, b) => a.instanceNumber - b.instanceNumber || a.frame - b.frame);
 }
+
+const geometryOf = (refs: SliceRef[]): SliceGeometry[] => refs.map((r) => ({ position: r.position, orientation: r.orientation }));
 
 /* ---------- Remote (DICOMweb) ---------- */
 
@@ -53,6 +59,7 @@ function metaFromJson(ds: DicomJson): PixelMeta {
     intercept: getNumber(ds, Tag.RescaleIntercept) ?? 0,
     windowCenter: getNumber(ds, Tag.WindowCenter),
     windowWidth: getNumber(ds, Tag.WindowWidth),
+    pixelSpacing: toSpacing(getNumbers(ds, Tag.PixelSpacing)) ?? toSpacing(getNumbers(ds, Tag.ImagerPixelSpacing)),
   };
 }
 
@@ -88,12 +95,19 @@ export async function openRemoteSeries(
     seriesDescription: series.description,
     patientName: study.patientName,
     studyDate: study.studyDate,
+    geometry: geometryOf(sorted),
     async load(i) {
       const r = sorted[i];
       const bytes = await client.frame(study.studyUID, series.seriesUID, r.sop, r.frame);
       return decodeFrame(bytes, r.meta);
     },
   };
+}
+
+/** The image in the middle of a server series, for its thumbnail. */
+export async function remoteMiddleImage(client: DicomwebClient, study: StudySummary, series: SeriesSummary): Promise<DecodedFrame> {
+  const source = await openRemoteSeries(client, study, series);
+  return source.load(middleIndex(source.count));
 }
 
 /* ---------- Local files (Part 10, uncompressed) ---------- */
@@ -174,6 +188,9 @@ export function importDicomBuffers(files: NamedBytes[], initialSkipped: LocalImp
         intercept: float('x00281052') ?? 0,
         windowCenter: float('x00281050'),
         windowWidth: float('x00281051'),
+        pixelSpacing:
+          toSpacing(ds.string('x00280030')?.split('\\').map(Number)) ??
+          toSpacing(ds.string('x00181164')?.split('\\').map(Number)),
       };
       const frameLen = frameByteLength(meta);
       const frames = Number(ds.intString('x00280008') ?? 1) || 1;
@@ -230,6 +247,7 @@ export function importDicomBuffers(files: NamedBytes[], initialSkipped: LocalImp
         seriesDescription: g.description,
         patientName: g.patientName,
         studyDate: g.studyDate,
+        geometry: geometryOf(sorted),
         load: async (i) => decodeFrame(sorted[i].bytes, sorted[i].meta),
       },
     });

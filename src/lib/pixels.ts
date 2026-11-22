@@ -1,8 +1,8 @@
 /**
  * Turns uncompressed DICOM pixel data into GPU-friendly planes.
  *
- * Grayscale stored values (8 or 16 bit, signed or unsigned) are shifted by their
- * minimum so they fit in 0..65535, then split into a high-byte and low-byte plane.
+ * Grayscale stored values (8 or 16 bit, signed or unsigned) are shifted by a constant for
+ * their bit depth so they fit in 0..65535, then split into a high-byte and low-byte plane.
  * Each plane becomes an Alpha_8 Skia image; alpha is never colour-managed, so the
  * shader can rebuild the exact integer and do rescale + window/level on the GPU.
  */
@@ -19,6 +19,8 @@ export interface PixelMeta {
   intercept: number;
   windowCenter?: number;
   windowWidth?: number;
+  /** Millimetres between rows, then between columns (PixelSpacing, else ImagerPixelSpacing). */
+  pixelSpacing?: [number, number];
 }
 
 export interface GrayFrame {
@@ -34,6 +36,7 @@ export interface GrayFrame {
   windowCenter: number;
   windowWidth: number;
   invert: boolean;
+  pixelSpacing?: [number, number];
 }
 
 export interface ColorFrame {
@@ -41,9 +44,17 @@ export interface ColorFrame {
   width: number;
   height: number;
   rgba: Uint8Array;
+  pixelSpacing?: [number, number];
 }
 
 export type DecodedFrame = GrayFrame | ColorFrame;
+
+/** A usable [row, column] spacing in mm, or undefined. */
+export function toSpacing(values: number[] | undefined): [number, number] | undefined {
+  if (!values || values.length < 2) return undefined;
+  const [r, c] = values;
+  return r > 0 && c > 0 && Number.isFinite(r) && Number.isFinite(c) ? [r, c] : undefined;
+}
 
 export function frameByteLength(m: PixelMeta): number {
   return m.rows * m.columns * m.samplesPerPixel * (m.bitsAllocated / 8);
@@ -96,10 +107,13 @@ function decodeGray(bytes: Uint8Array, m: PixelMeta): GrayFrame {
     }
   }
 
+  // Shift signed values up by a constant for the bit depth (not this frame's minimum), so every
+  // slice of a series shares the same offset and the shader's uniforms don't change while scrolling.
+  const shift = signed ? -signBit : 0;
   const hi = new Uint8Array(n);
   const lo = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
-    const p = values[i] - min;
+    const p = values[i] - shift;
     hi[i] = p >> 8;
     lo[i] = p & 0xff;
   }
@@ -116,12 +130,13 @@ function decodeGray(bytes: Uint8Array, m: PixelMeta): GrayFrame {
     height: m.rows,
     hi,
     lo,
-    offset: min,
+    offset: shift,
     slope: m.slope,
     intercept: m.intercept,
     windowCenter: hasWindow ? (m.windowCenter as number) : (lowValue + highValue) / 2,
     windowWidth: hasWindow ? (m.windowWidth as number) : Math.max(highValue - lowValue, 1),
     invert: m.photometric === 'MONOCHROME1',
+    pixelSpacing: m.pixelSpacing,
   };
 }
 
@@ -152,7 +167,7 @@ function decodeColor(bytes: Uint8Array, m: PixelMeta): ColorFrame {
     rgba[i * 4 + 2] = b;
     rgba[i * 4 + 3] = 255;
   }
-  return { kind: 'color', width: m.columns, height: m.rows, rgba };
+  return { kind: 'color', width: m.columns, height: m.rows, rgba, pixelSpacing: m.pixelSpacing };
 }
 
 function clamp255(v: number): number {

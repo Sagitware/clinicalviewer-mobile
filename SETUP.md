@@ -1,13 +1,13 @@
-# ClinicalView Mobile — setup
+# fig-dicom — setup
 
-A React Native (Expo SDK 57) DICOM viewer that reads from the same Orthanc DICOMweb
+A React Native (Expo SDK 58) DICOM viewer that reads from the same Orthanc DICOMweb
 server as the ClinicalView PACS web workstation, and can also open DICOM files stored
 on the phone.
 
 ## What it does
 
 - Study search (QIDO-RS) by patient name, newest first, with modality badges.
-- Series list per study; tap a series to open it.
+- Series list per study with a thumbnail of each series' middle image; tap a series to open it.
 - Stack viewer: slices sorted along the slice normal (ImagePositionPatient /
   ImageOrientationPatient), falling back to InstanceNumber. Multi-frame instances are
   expanded into slices.
@@ -15,9 +15,15 @@ on the phone.
   so dragging W/L runs at display refresh rate on the UI thread.
 - Gestures: one-finger drag does the selected tool (Window, Pan, Scroll), pinch zooms
   and pans in every tool, double-tap fits the image.
-- Slice slider, cine (12 fps), invert, smoothing toggle, reset, CT presets
+- Slice slider, cine (12 fps), invert, smoothing toggle, and one **W/L** button whose menu holds reset and the CT presets
   (soft tissue, lung, bone, brain, angio, liver).
 - Overlay: patient, date, modality, series, image number, W/L, zoom.
+- Measurements and annotations (top-right menu): length, angle, ellipse ROI, arrow with label.
+- MPR (the **MPR** button under the slice slider): axial, coronal and sagittal views of a
+  CT or MR stack, linked by a crosshair. Tap or drag in one view to move the other two;
+  double-tap a view (or tap its name) to swap it with the main view, and double-tap the
+  main view to bring axial back. Views follow radiological convention
+  whatever the acquisition plane, with patient direction letters on each edge.
 - Import from this device, Google Drive or Dropbox: individual files, whole folders
   (subfolders included) or `.zip` archives. Files are grouped by series.
 - Prefetch of ±24 slices around the current one, LRU cache of 96 frames.
@@ -45,7 +51,7 @@ You only rebuild when native modules or `app.config.ts` change, not for code cha
 **Expo Go still works for everything except Google Drive and Dropbox.** Run
 `npx expo start`, then press `s` to switch to Expo Go before scanning the QR code
 (with `expo-dev-client` installed, the QR code targets the development build by
-default). Study search, the viewer, the Server screen, and importing files or zips
+default). Study search, the viewer, server setup, and importing files or zips
 from the device all work. The two cloud rows show "Needs a development build", and opening email attachments
 in the app also needs a development build.
 
@@ -63,13 +69,32 @@ Typecheck: `npm run typecheck`
    { "RemoteAccessAllowed": true }
    ```
 
-   If authentication is on, enter the username and password on the Server screen.
+   If authentication is on, enter the username and password when adding the server.
    CORS is not involved: native apps are not subject to it.
 3. **Compressed studies:** the app requests every frame as Explicit VR Little Endian
    (`transfer-syntax=1.2.840.10008.1.2.1`). Orthanc transcodes JPEG, JPEG-LS, JPEG 2000
    and RLE on the fly when that is requested. If you see
    "The server sent compressed pixels", your Orthanc build or DICOMweb plugin is too old
    to transcode frames; upgrade it.
+
+## Traditional DICOM servers (C-FIND / C-GET)
+
+Choose **DICOM (DIMSE)** when adding a server, then enter the host, port, the server's AE
+title, and this device's AE title (default `FIGDICOM`).
+
+- **Search** uses C-FIND at the Study Root level; the list stops at 50 studies (C-CANCEL).
+- **Opening a series** uses C-GET: the PACS sends the images back on the same connection,
+  so it never needs to connect to the phone. The whole series is held in memory and is not
+  saved to Local studies.
+- **On the PACS:** register this device's AE title and allow it C-FIND and C-GET. For
+  Orthanc, either add it to `DicomModalities` or set `"DicomAlwaysAllowFind": true` and
+  `"DicomAlwaysAllowGet": true`.
+- **Compressed images:** only uncompressed transfer syntaxes are offered, so the PACS must
+  transcode JPEG, JPEG 2000 and similar. Orthanc does this; some PACS don't, and those
+  images fail with a message saying so.
+- **Test connection** sends a C-ECHO.
+- C-MOVE (where the PACS pushes images to the device's receiver) is not supported yet.
+- Needs a development build (it uses `react-native-tcp-socket`); it doesn't work in Expo Go.
 
 AWS HealthImaging is not wired up on mobile yet. It returns HTJ2K frames, which need a
 native decoder or a transcoding proxy (see "Next steps").
@@ -137,13 +162,13 @@ device") when their apps are installed. That path needs no keys but can't pick f
 
 ## Opening email attachments
 
-ClinicalView registers itself for `.dcm`, `.dicom`, `.dic` and `.zip` files, so it shows
+fig-dicom registers itself for `.dcm`, `.dicom`, `.dic` and `.zip` files, so it shows
 up when someone opens an attachment:
 
 - **iOS Mail, Outlook, Gmail for iOS:** tap the attachment, tap the share button, then
-  choose ClinicalView in the app row (or "Open in…" in some apps).
-- **Gmail and other Android mail apps:** tap the attachment and pick ClinicalView. If the
-  mail app labels the file as generic binary, ClinicalView still appears, because it
+  choose fig-dicom in the app row (or "Open in…" in some apps).
+- **Gmail and other Android mail apps:** tap the attachment and pick fig-dicom. If the
+  mail app labels the file as generic binary, fig-dicom still appears, because it
   also accepts `application/octet-stream`.
 - The app opens straight to the series list for that file. Zips with whole series work.
 
@@ -170,16 +195,19 @@ src/lib/dicomJson.ts            DICOM JSON tag helpers
 src/lib/pixels.ts               pixel decoding: signed/unsigned 8/16-bit, MONOCHROME1/2, RGB, YBR_FULL
 src/lib/skiaFrames.ts           GPU upload + the window/level shader
 src/lib/frameCache.ts           LRU cache and prefetch queue
+src/lib/volume.ts               MPR: stack geometry checks, volume loading, reslicing, view orientation
+src/lib/measure.ts              measurement and annotation maths
 src/lib/sources.ts              SliceSource for DICOMweb series, and the shared import path for files
 src/lib/archive.ts              in-memory zip expansion
 src/lib/localDb.ts              SQLite library of imported files
 src/lib/cloud/googleDrive.ts    Google Drive provider (Google Sign-In + Drive API v3)
 src/lib/cloud/dropbox.ts        Dropbox provider (OAuth PKCE + Dropbox API v2)
 src/lib/cloud/importer.ts       folder scan, size check, parallel download
-src/lib/incomingFiles.ts        files opened from Mail, Gmail, Files ("Open in ClinicalView")
-src/lib/settings.ts             server settings in the device keychain
+src/lib/incomingFiles.ts        files opened from Mail, Gmail, Files ("Open in fig-dicom")
+src/lib/settings.ts             server list and last location, in the device keychain
 src/components/DicomViewport.tsx Skia canvas and gestures
-src/screens/*                   Studies, Series, Viewer, Server, Import, Cloud browser
+src/components/MprPane.tsx      one MPR view: its cut, reference lines and gestures
+src/screens/*                   Studies, Series, Viewer, MPR, Servers, Import, Cloud browser
 ```
 
 ## How rendering works
@@ -202,7 +230,7 @@ Reanimated shared values, so gestures never cross the JS bridge.
 - Frames being viewed live in memory and are dropped when you leave the viewer.
 - Files chosen from this device are copied to the cache by the system picker; the
   app reads them into memory and deletes those copies immediately.
-- Server address and credentials are persisted separately, in the iOS Keychain or
+- Server addresses and credentials are persisted separately, in the iOS Keychain or
   Android Keystore via `expo-secure-store`.
 
 ## Known limits
@@ -210,7 +238,14 @@ Reanimated shared values, so gestures never cross the JS bridge.
 - Local files must be uncompressed (Implicit or Explicit VR Little Endian). Compressed
   files are listed as skipped; send them to Orthanc and open them from Studies.
 - Palette colour, 32-bit and 1-bit images are not rendered.
-- Pixel aspect ratio is assumed square; measurements and annotations are not included yet.
+- Pixel aspect ratio is assumed square in the stack viewer. Measurements and annotations
+  are kept for the viewing session only, and are not available in MPR.
+- MPR needs a grayscale series whose slices are parallel, evenly spaced, stacked straight
+  and share one size and one set of rescale values. Tilted-gantry CT, series with missing
+  slices, multi-frame instances and PET series with per-slice rescale are refused with the
+  reason. The views are cut along the acquisition's own axes (no oblique planes), and the
+  whole series is loaded into memory first: two bytes per voxel, up to about 256 MB, above
+  which each slice is averaged down by a whole factor (the screen says when).
 - HTTP to a server on the local network works in development builds on both platforms
   (iOS has a local-networking exception in `app.config.ts`; Android debug builds allow
   cleartext). Release builds on Android block HTTP, and any server reached over the
@@ -222,5 +257,4 @@ Reanimated shared values, so gestures never cross the JS bridge.
 - Read-only display of annotations saved by the web workstation.
 - HTJ2K for AWS HealthImaging: either a native decoder module, or ask Orthanc / a small
   proxy to transcode, which keeps the app unchanged.
-- MPR on mobile is feasible with the same shader approach but needs a 3D texture
-  strategy; worth a separate design pass.
+- Oblique MPR planes, measurements in MPR, and MIP / slab thickness.

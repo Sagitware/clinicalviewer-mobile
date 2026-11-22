@@ -15,15 +15,15 @@ const ANDROID_MIME_TYPES = [
   'application/dicom',
   'application/zip',
   'application/x-zip-compressed',
-  // Many mail apps label .dcm files as generic binary. This makes ClinicalView
+  // Many mail apps label .dcm files as generic binary. This makes fig-dicom
   // appear as an option for other binary attachments too; the app rejects non-DICOM.
   'application/octet-stream',
 ];
 
 const config: ExpoConfig = {
-  name: 'ClinicalView Mobile',
+  name: 'fig-dicom',
   slug: 'clinicalview-mobile',
-  version: '1.0.0',
+  version: '1.1.3',
   orientation: 'default',
   icon: './assets/icon.png',
   userInterfaceStyle: 'dark',
@@ -39,8 +39,9 @@ const config: ExpoConfig = {
       // Internet servers still require HTTPS.
       NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
       // Shown when a DICOM sender connects to the Receive (C-STORE) listener.
-      NSLocalNetworkUsageDescription: 'ClinicalView receives DICOM images sent from computers and scanners on your local network.',
-      // "Open in ClinicalView" for .dcm and .zip attachments in Mail, Files, and other apps.
+      NSLocalNetworkUsageDescription:
+        'fig-dicom connects to PACS servers and receives DICOM images from computers and scanners on your local network.',
+      // "Open in fig-dicom" for .dcm and .zip attachments in Mail, Files, and other apps.
       // iOS doesn't know DICOM by default, so the type is declared here.
       UTImportedTypeDeclarations: [
         {
@@ -99,6 +100,8 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-secure-store',
+    'expo-sqlite',
+    'expo-status-bar',
     'expo-web-browser',
     ...(googleUrlScheme
       ? [['@react-native-google-signin/google-signin', { iosUrlScheme: googleUrlScheme }] as [string, object]]

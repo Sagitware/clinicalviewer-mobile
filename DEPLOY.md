@@ -1,6 +1,6 @@
-# Deploying ClinicalView Mobile to the App Store and Google Play
+# Deploying fig-dicom to the App Store and Google Play
 
-Expo SDK 57 app, built and submitted with EAS (Expo Application Services). No local Xcode or Android Studio is needed.
+Expo SDK 58 app, built and submitted with EAS (Expo Application Services). No local Xcode or Android Studio is needed.
 
 - iOS bundle ID: `com.sagitware.clinicalview.mobile`
 - Android package: `com.sagitware.clinicalview.mobile`
@@ -33,7 +33,7 @@ eas login
 
 1. **Decide on the native modules.** The app uses `react-native-tcp-socket`, `expo-network`, `expo-secure-store` and Google Sign-In. None of these run in Expo Go, so test with a development build first (step 2).
 2. **Google Drive sign-in (optional).** Set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` (and the web/Android client IDs) in EAS environment variables, not in the repo. If unset, Drive shows as "not set up".
-3. **DICOMweb default URL.** `EXPO_PUBLIC_DICOMWEB_URL` is bundled into the app and visible to anyone, so don't put secrets in it. Users can override it in Settings.
+3. **DICOMweb default URL.** `EXPO_PUBLIC_DICOMWEB_URL` is bundled into the app and visible to anyone, so don't put secrets in it. It only creates the first server; users add and edit servers in the app.
 4. **Check the assets.** `assets/icon.png` must be 1024x1024 with no transparency. The Android adaptive icon files are already configured.
 5. **Confirm export compliance.** `app.config.ts` sets
    `ios.infoPlist.ITSAppUsesNonExemptEncryption` to `false`. This declares to Apple that
@@ -96,15 +96,17 @@ eas device:create                                        # registers an iPhone f
 
 ## 3. iOS: App Store
 
+> For the full, up-to-date iOS walkthrough (SDK 58, Node 22, TestFlight checks and review notes), see [DEPLOY-IOS.md](DEPLOY-IOS.md).
+
 ### 3.1 Apple setup (one time)
 
 1. Enrol in the Apple Developer Program and wait for approval.
 2. In **App Store Connect > Apps > + > New App**:
    - Platform: iOS
-   - Name: ClinicalView Mobile (must be unique in the store)
+   - Name: fig-dicom (must be unique in the store)
    - Primary language
    - Bundle ID: `com.sagitware.clinicalview.mobile` (EAS registers it on the first build if it's missing)
-   - SKU: any unique string, for example `clinicalview-mobile`
+   - SKU: any unique string, for example `fig-dicom`
 3. Note the app's **Apple ID** (a numeric ID under App Information). EAS Submit needs it, or you can enter it when prompted.
 
 ### 3.2 Build

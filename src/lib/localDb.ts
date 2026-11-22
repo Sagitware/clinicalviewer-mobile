@@ -3,10 +3,13 @@
  * SQLite holds the indexed metadata; the original Part 10 files live on disk in the app's
  * document directory, so a saved series is opened by the same importer as freshly picked files.
  */
-import { Directory, File, Paths } from "expo-file-system";
+import { Directory, File, FileMode, Paths } from "expo-file-system";
+import dicomParser from "dicom-parser";
 import * as SQLite from "expo-sqlite";
 import type { NamedBytes } from "./archive";
-import type { StoredInstance } from "./sources";
+import type { DecodedFrame } from "./pixels";
+import { importDicomBuffers, sortSlices, type StoredInstance } from "./sources";
+import { middleIndex } from "./thumbnail";
 
 export interface SavedStudy {
   studyUid: string;
@@ -100,7 +103,7 @@ export async function saveInstances(
     const name = safeName(i.sopUid);
     const f = fileFor(name);
     f.create({ overwrite: true });
-    f.write(i.bytes);
+    await f.write(i.bytes);
     written.push(name);
   }
   try {
@@ -215,6 +218,69 @@ export async function loadSeriesFiles(
     }
   }
   return out;
+}
+
+/** Enough of the start of a file to hold its header in practice; larger headers are read whole. */
+const HEADER_BYTES = 16 * 1024;
+
+/** The start of a file, or all of it when shorter. */
+function readStart(file: File, length: number): Uint8Array {
+  const handle = file.open(FileMode.ReadOnly);
+  try {
+    return handle.readBytesSync(length);
+  } finally {
+    handle.close();
+  }
+}
+
+/** Where a stored file sits in its series, from its header alone. */
+function headerRef(bytes: Uint8Array) {
+  const ds = dicomParser.parseDicom(bytes, { untilTag: "x7fe00010" });
+  const split = (tag: string) => ds.string(tag)?.split("\\").map(Number);
+  const frames = Number(ds.intString("x00280008") ?? 1) || 1;
+  return {
+    instanceNumber: Number(ds.intString("x00200013") ?? 0) || 0,
+    frame: 1,
+    position: frames === 1 ? split("x00200032") : undefined,
+    orientation: split("x00200037"),
+  };
+}
+
+/**
+ * The image in the middle of a stored series, for its thumbnail. Reads only the headers to
+ * put the files in order (by position along the slices, else by instance number), then
+ * decodes the one in the middle.
+ */
+export async function loadMiddleImage(seriesUid: string): Promise<DecodedFrame> {
+  const db = await database();
+  const rows = await db.getAllAsync<{ file_name: string; file_path: string }>(
+    "SELECT file_name, file_path FROM instances WHERE series_uid = ? ORDER BY file_name",
+    seriesUid,
+  );
+  if (rows.length === 0) throw new Error("No stored images.");
+  const refs = [];
+  for (const r of rows) {
+    const file = fileFor(r.file_path);
+    try {
+      let ref;
+      try {
+        ref = headerRef(readStart(file, HEADER_BYTES));
+      } catch {
+        ref = headerRef(new Uint8Array(await file.arrayBuffer()));
+      }
+      refs.push({ ...ref, row: r, file });
+    } catch {
+      // Missing or unreadable file; leave it out.
+    }
+    // Let the list keep scrolling while a long series is read.
+    if (refs.length % 50 === 0) await new Promise((done) => setTimeout(done, 0));
+  }
+  if (refs.length === 0) throw new Error("The stored images could not be read.");
+  const pick = sortSlices(refs)[middleIndex(refs.length)];
+  const bytes = new Uint8Array(await pick.file.arrayBuffer());
+  const source = importDicomBuffers([{ name: pick.row.file_name, bytes }]).series[0]?.source;
+  if (!source) throw new Error("The image could not be read.");
+  return source.load(middleIndex(source.count));
 }
 
 export async function deleteStudy(studyUid: string): Promise<void> {

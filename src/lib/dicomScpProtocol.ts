@@ -1,20 +1,21 @@
 /**
  * DICOM Upper Layer protocol for a Storage SCP (PS3.8) with C-STORE and C-ECHO (PS3.7).
  * Pure TypeScript with no React Native imports, so it can be driven by any byte transport.
+ * The encoding helpers are shared with the query/retrieve SCU in dicomScu.ts.
  */
 
-const VERIFICATION = '1.2.840.10008.1.1';
+export const VERIFICATION = '1.2.840.10008.1.1';
 const STORAGE_PREFIX = '1.2.840.10008.5.1.4.1.1.';
-const IMPLICIT_LE = '1.2.840.10008.1.2';
-const EXPLICIT_LE = '1.2.840.10008.1.2.1';
+export const IMPLICIT_LE = '1.2.840.10008.1.2';
+export const EXPLICIT_LE = '1.2.840.10008.1.2.1';
 /** Uncompressed syntaxes only: the viewer displays these, and every SCU must offer Implicit VR LE. */
 const SUPPORTED_SYNTAXES = [EXPLICIT_LE, IMPLICIT_LE];
-const APP_CONTEXT = '1.2.840.10008.3.1.1.1';
-const IMPLEMENTATION_UID = '1.2.826.0.1.3680043.8.498.1';
-const IMPLEMENTATION_VERSION = 'CLINICALVIEW';
-const MAX_PDU = 65536;
+export const APP_CONTEXT = '1.2.840.10008.3.1.1.1';
+export const IMPLEMENTATION_UID = '1.2.826.0.1.3680043.8.498.1';
+export const IMPLEMENTATION_VERSION = 'CLINICALVIEW';
+export const MAX_PDU = 65536;
 /** Guards against a peer streaming without end. */
-const MAX_OBJECT_BYTES = 512 * 1024 * 1024;
+export const MAX_OBJECT_BYTES = 512 * 1024 * 1024;
 
 export const Status = {
   Success: 0x0000,
@@ -44,9 +45,9 @@ interface Context {
   transferSyntax: string | null;
 }
 
-const ascii = (bytes: Uint8Array) => String.fromCharCode(...bytes).replace(/[\0 ]+$/, '').replace(/^ +/, '');
+export const ascii = (bytes: Uint8Array) => String.fromCharCode(...bytes).replace(/[\0 ]+$/, '').replace(/^ +/, '');
 
-function concat(parts: Uint8Array[]): Uint8Array {
+export function concat(parts: Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let o = 0;
   for (const p of parts) {
@@ -56,7 +57,7 @@ function concat(parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-class Writer {
+export class Writer {
   private parts: number[] = [];
   u8(v: number) {
     this.parts.push(v & 0xff);
@@ -89,36 +90,36 @@ class Writer {
 }
 
 /** UI values are null-padded to an even length. */
-function uiBytes(uid: string): number[] {
+export function uiBytes(uid: string): number[] {
   const out = Array.from(uid, (c) => c.charCodeAt(0));
   if (out.length % 2) out.push(0);
   return out;
 }
 
-function item(type: number, body: Uint8Array | number[]): Uint8Array {
+export function item(type: number, body: Uint8Array | number[]): Uint8Array {
   return new Writer().u8(type).u8(0).u16(body.length).bytes(body).done();
 }
 
-function pdu(type: number, body: Uint8Array): Uint8Array {
+export function pdu(type: number, body: Uint8Array): Uint8Array {
   return new Writer().u8(type).u8(0).u32(body.length).bytes(body).done();
 }
 
 /** Builds an implicit VR little endian command set with its leading group length element. */
-function command(elements: { tag: number; value: number[] }[]): Uint8Array {
+export function command(elements: { tag: number; value: number[] }[]): Uint8Array {
   const body = new Writer();
   for (const e of elements) body.u16le(0x0000).u16le(e.tag).u32le(e.value.length).bytes(e.value);
   const payload = body.done();
   return new Writer().u16le(0).u16le(0).u32le(4).u32le(payload.length).bytes(payload).done();
 }
 
-const us = (v: number) => [v & 0xff, (v >> 8) & 0xff];
+export const us = (v: number) => [v & 0xff, (v >> 8) & 0xff];
 
 function pData(contextId: number, cmd: Uint8Array): Uint8Array {
   const pdv = new Writer().u32(cmd.length + 2).u8(contextId).u8(0x03).bytes(cmd).done();
   return pdu(0x04, pdv);
 }
 
-function parseCommand(bytes: Uint8Array) {
+export function parseCommand(bytes: Uint8Array) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const out = new Map<number, Uint8Array>();
   let p = 0;
@@ -141,9 +142,16 @@ function parseCommand(bytes: Uint8Array) {
   return {
     field: u16(0x00000100),
     messageId: u16(0x00000110),
+    respondingTo: u16(0x00000120),
     dataSetType: u16(0x00000800),
+    status: u16(0x00000900),
+    errorComment: uid(0x00000902),
     sopClass: uid(0x00000002),
     sopInstance: uid(0x00001000),
+    remaining: u16(0x00001020),
+    completed: u16(0x00001021),
+    failed: u16(0x00001022),
+    warning: u16(0x00001023),
   };
 }
 

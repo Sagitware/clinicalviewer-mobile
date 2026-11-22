@@ -75,7 +75,7 @@ export async function startScp(port: number): Promise<void> {
   // Loaded lazily so the app still starts where the native modules are missing (Expo Go / old dev build).
   let TcpSocket: typeof TcpSocketType;
   try {
-    TcpSocket = require('react-native-tcp-socket').default;
+    TcpSocket = (await import('react-native-tcp-socket')).default;
   } catch {
     const message = 'Receiving needs a development build that includes react-native-tcp-socket. Rebuild the app.';
     update({ error: message });
@@ -113,7 +113,7 @@ export async function startScp(port: number): Promise<void> {
   });
   let address: string | null = null;
   try {
-    address = await (require('expo-network') as typeof import('expo-network')).getIpAddressAsync();
+    address = await (await import('expo-network')).getIpAddressAsync();
   } catch {}
   update({ running: true, port, address: address === '0.0.0.0' ? null : address, error: null });
 }
