@@ -1,5 +1,6 @@
-import { AlphaType, ColorType, Skia, type SkImage } from '@shopify/react-native-skia';
+import { AlphaType, ColorType, ImageFormat, Skia, type SkImage } from '@shopify/react-native-skia';
 import type { DecodedFrame } from './pixels';
+import { thumbnailPixels } from './thumbnail';
 
 export type LoadedFrame =
   | {
@@ -38,6 +39,13 @@ function makeImage(
 /** One byte plane (the high or low bytes of a grayscale frame) as an image the shader can sample. */
 export function bytePlane(bytes: Uint8Array, width: number, height: number): SkImage {
   return makeImage(bytes, width, height, ColorType.Alpha_8, AlphaType.Premul, 1);
+}
+
+/** A small JPEG of a frame as a data URI, for an <Image> in a list. */
+export function thumbnailUri(frame: DecodedFrame, maxSize = 128): string {
+  const t = thumbnailPixels(frame, maxSize);
+  const image = makeImage(t.rgba, t.width, t.height, ColorType.RGBA_8888, AlphaType.Opaque, 4);
+  return `data:image/jpeg;base64,${image.encodeToBase64(ImageFormat.JPEG, 85)}`;
 }
 
 /** 1x1 stand-in for hi/lo before the first frame, so the shader can stay mounted. */

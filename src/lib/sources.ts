@@ -8,6 +8,7 @@ import dicomParser from 'dicom-parser';
 import type { DicomwebClient, SeriesSummary, StudySummary } from './dicomClient';
 import { Tag, formatDate, formatPersonName, getNumber, getNumbers, getString, type DicomJson } from './dicomJson';
 import { decodeFrame, frameByteLength, toSpacing, type DecodedFrame, type PixelMeta } from './pixels';
+import { middleIndex } from './thumbnail';
 import type { SliceGeometry } from './volume';
 
 export interface SliceSource {
@@ -21,7 +22,7 @@ export interface SliceSource {
   load(index: number): Promise<DecodedFrame>;
 }
 
-interface SliceRef {
+export interface SliceRef {
   instanceNumber: number;
   frame: number;
   position?: number[];
@@ -29,7 +30,7 @@ interface SliceRef {
 }
 
 /** Sort along the slice normal when geometry exists, else by instance number. */
-function sortSlices<T extends SliceRef>(refs: T[]): T[] {
+export function sortSlices<T extends SliceRef>(refs: T[]): T[] {
   const o = refs.find((r) => r.orientation?.length === 6)?.orientation;
   const geometric = o && refs.every((r) => r.position?.length === 3);
   if (o && geometric) {
@@ -101,6 +102,12 @@ export async function openRemoteSeries(
       return decodeFrame(bytes, r.meta);
     },
   };
+}
+
+/** The image in the middle of a server series, for its thumbnail. */
+export async function remoteMiddleImage(client: DicomwebClient, study: StudySummary, series: SeriesSummary): Promise<DecodedFrame> {
+  const source = await openRemoteSeries(client, study, series);
+  return source.load(middleIndex(source.count));
 }
 
 /* ---------- Local files (Part 10, uncompressed) ---------- */

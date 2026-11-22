@@ -18,7 +18,9 @@ import {
   type QueryKey,
 } from './dicomScu';
 import type { ServerConfig } from './settings';
+import type { DecodedFrame } from './pixels';
 import { importDicomBuffers, type SliceSource } from './sources';
+import { middleIndex } from './thumbnail';
 import type { StudyServer } from './studyServer';
 
 /** No bytes from the server for this long (including connecting) ends the operation. */
@@ -37,6 +39,8 @@ const T = {
   PatientID: 0x00100020,
   StudyInstanceUID: 0x0020000d,
   SeriesInstanceUID: 0x0020000e,
+  SOPInstanceUID: 0x00080018,
+  InstanceNumber: 0x00200013,
   SeriesNumber: 0x00200011,
   NumberOfStudyRelatedInstances: 0x00201208,
   NumberOfSeriesRelatedInstances: 0x00201209,
@@ -137,6 +141,50 @@ export class DimseClient implements StudyServer {
     const { series: parsed } = importDicomBuffers(result.files.map((bytes, i) => ({ name: `image-${i + 1}.dcm`, bytes })));
     if (parsed.length === 0) throw new Error('The images from the server could not be displayed.');
     return parsed.find((s) => s.uid === series.seriesUID)?.source ?? parsed[0].source;
+  }
+
+  /**
+   * Finds the series' images (C-FIND at image level), then retrieves only the middle one by
+   * instance number (C-GET), rather than the whole series.
+   */
+  async middleImage(study: StudySummary, series: SeriesSummary): Promise<DecodedFrame> {
+    const rows = await this.run([{ abstractSyntax: STUDY_ROOT_FIND, transferSyntaxes: QUERY_SYNTAXES }], (a) =>
+      a.find(
+        [
+          [T.QueryRetrieveLevel, 'IMAGE'],
+          [T.StudyInstanceUID, study.studyUID, true],
+          [T.SeriesInstanceUID, series.seriesUID, true],
+          [T.SOPInstanceUID, '', true],
+          [T.InstanceNumber, ''],
+        ],
+        5000,
+      ),
+    );
+    const images = rows
+      .map(parseRow)
+      .map((r) => ({ sop: r.text(T.SOPInstanceUID), number: r.number(T.InstanceNumber) ?? 0 }))
+      .filter((r) => r.sop)
+      .sort((a, b) => a.number - b.number);
+    if (images.length === 0) throw new Error('No images found in this series.');
+    const pick = images[middleIndex(images.length)];
+
+    const contexts: ProposedContext[] = [
+      { abstractSyntax: STUDY_ROOT_GET, transferSyntaxes: QUERY_SYNTAXES },
+      ...IMAGE_STORAGE_CLASSES.map((c) => ({ abstractSyntax: c, transferSyntaxes: IMAGE_SYNTAXES, scpRole: true })),
+    ];
+    const result = await this.run(contexts, (a) =>
+      a.get([
+        [T.QueryRetrieveLevel, 'IMAGE'],
+        [T.StudyInstanceUID, study.studyUID, true],
+        [T.SeriesInstanceUID, series.seriesUID, true],
+        [T.SOPInstanceUID, pick.sop, true],
+      ]),
+    );
+    if (result.files.length === 0) throw new Error('The server sent no image.');
+    const { series: parsed } = importDicomBuffers(result.files.map((bytes, i) => ({ name: `image-${i + 1}.dcm`, bytes })));
+    const source = parsed[0]?.source;
+    if (!source) throw new Error('The image could not be read.');
+    return source.load(middleIndex(source.count));
   }
 
   private async run<T>(contexts: ProposedContext[], op: (a: ScuAssociation) => Promise<T>): Promise<T> {

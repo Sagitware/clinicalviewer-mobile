@@ -7,7 +7,7 @@ on the phone.
 ## What it does
 
 - Study search (QIDO-RS) by patient name, newest first, with modality badges.
-- Series list per study; tap a series to open it.
+- Series list per study with a thumbnail of each series' middle image; tap a series to open it.
 - Stack viewer: slices sorted along the slice normal (ImagePositionPatient /
   ImageOrientationPatient), falling back to InstanceNumber. Multi-frame instances are
   expanded into slices.

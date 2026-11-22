@@ -5,7 +5,8 @@
 import { fetch } from 'expo/fetch';
 import { Tag, formatDate, formatPersonName, getNumber, getString, getStrings, type DicomJson } from './dicomJson';
 import type { ServerConfig } from './settings';
-import { openRemoteSeries, type SliceSource } from './sources';
+import type { DecodedFrame } from './pixels';
+import { openRemoteSeries, remoteMiddleImage, type SliceSource } from './sources';
 import type { StudyServer } from './studyServer';
 
 export interface StudySummary {
@@ -88,6 +89,11 @@ export class DicomwebClient implements StudyServer {
 
   openSeries(study: StudySummary, series: SeriesSummary): Promise<SliceSource> {
     return openRemoteSeries(this, study, series);
+  }
+
+  /** One metadata request and one frame. */
+  middleImage(study: StudySummary, series: SeriesSummary): Promise<DecodedFrame> {
+    return remoteMiddleImage(this, study, series);
   }
 
   seriesMetadata(studyUID: string, seriesUID: string): Promise<DicomJson[]> {

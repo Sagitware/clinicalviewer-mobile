@@ -20,13 +20,14 @@ import {
 } from './src/lib/settings';
 import type { CloudProvider } from './src/lib/cloud/types';
 import { readIncomingFile, useIncomingFiles } from './src/lib/incomingFiles';
-import { saveInstances, listSeries, loadSeriesFiles, type SavedStudy } from './src/lib/localDb';
+import { saveInstances, listSeries, loadMiddleImage, loadSeriesFiles, type SavedStudy } from './src/lib/localDb';
 import { importDicomBuffers, importFromUrl, importLocalFiles, type LocalImportResult, type SliceSource } from './src/lib/sources';
 import { createStudyServer } from './src/lib/studyServer';
 import { LocationMenu } from './src/components/LocationMenu';
 import { CloudBrowserScreen } from './src/screens/CloudBrowserScreen';
 import { LibraryScreen } from './src/screens/LibraryScreen';
 import { ImportScreen } from './src/screens/ImportScreen';
+import { middleIndex } from './src/lib/thumbnail';
 import { SeriesListScreen, type SeriesItem } from './src/screens/SeriesListScreen';
 import { ServerScreen } from './src/screens/ServerScreen';
 import { ServersScreen } from './src/screens/ServersScreen';
@@ -109,6 +110,7 @@ export default function App() {
               .filter(Boolean)
               .join('   '),
             open: () => client.openSeries(study, s),
+            thumbnail: () => client.middleImage(study, s),
           })),
         }),
       });
@@ -134,6 +136,7 @@ export default function App() {
               if (series.length === 0) throw new Error('The stored images could not be read.');
               return series[0].source;
             },
+            thumbnail: () => loadMiddleImage(s.seriesUid),
           })),
         }),
       }),
@@ -166,6 +169,7 @@ export default function App() {
             title: s.description || 'Untitled series',
             detail: `${s.source.count} image${s.source.count === 1 ? '' : 's'}`,
             open: async () => s.source,
+            thumbnail: () => s.source.load(middleIndex(s.source.count)),
           })),
           notice: [
             saveNotice,

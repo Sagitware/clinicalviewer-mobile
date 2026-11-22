@@ -13,6 +13,7 @@ import {
   Shader,
   Skia,
   usePathValue,
+  type SkImage,
   type SkPath,
   type SkPathBuilder,
 } from '@shopify/react-native-skia';
@@ -36,6 +37,19 @@ import {
 } from '../lib/measure';
 import { EMPTY_PLANE, GRAY_EFFECT, type LoadedFrame } from '../lib/skiaFrames';
 import { colors, space, type } from '../theme';
+
+/** What the grayscale layer draws: changed together so the planes never meet stale uniforms. */
+interface GrayLayer {
+  hi: SkImage;
+  lo: SkImage;
+  w: number;
+  h: number;
+  slope: number;
+  intercept: number;
+  offset: number;
+}
+/** Nothing to draw (no frame yet, or a colour frame): a zero-size rect. */
+const EMPTY_LAYER: GrayLayer = { hi: EMPTY_PLANE, lo: EMPTY_PLANE, w: 0, h: 0, slope: 1, intercept: 0, offset: 0 };
 
 export type Tool = 'window' | 'pan' | 'scroll' | MeasureTool;
 const TOOL_INDEX: Record<Tool, number> = { window: 0, pan: 1, scroll: 2, length: 3, angle: 4, ellipse: 5, arrow: 6 };
@@ -427,29 +441,37 @@ export function DicomViewport({
     { scale: v.scale.get() },
   ]);
 
-  const gray = frame?.kind === 'gray' ? frame : null;
-  const width = gray?.width ?? 1;
-  const height = gray?.height ?? 1;
-  const offset = gray?.offset ?? 0;
-  const slope = gray?.slope ?? 1;
-  const intercept = gray?.intercept ?? 0;
+  // Everything the grayscale layer draws from (the two byte planes, their size and rescale) goes to
+  // the canvas in ONE shared value. Passed as separate React props, the new planes and size arrived
+  // a frame before the shader's derived uniforms caught up, so the first image of a series was drawn
+  // once with the placeholder offset, slope and size: a white or flat flash.
+  const layer = useSharedValue<GrayLayer>(EMPTY_LAYER);
+  useEffect(() => {
+    layer.set(
+      frame?.kind === 'gray'
+        ? { hi: frame.hi, lo: frame.lo, w: frame.width, h: frame.height, slope: frame.slope, intercept: frame.intercept, offset: frame.offset }
+        : EMPTY_LAYER,
+    );
+  }, [frame, layer]);
   const smoothFlag = smooth ? 1 : 0;
 
-  const uniforms = useDerivedValue(
-    () => ({
-      size: [width, height],
+  const uniforms = useDerivedValue(() => {
+    const l = layer.get();
+    return {
+      size: [Math.max(l.w, 1), Math.max(l.h, 1)],
       wc: v.wc.get(),
       ww: v.ww.get(),
-      slope,
-      intercept,
-      offset,
+      slope: l.slope,
+      intercept: l.intercept,
+      offset: l.offset,
       invert: v.invert.get(),
       smooth: smoothFlag,
-    }),
-    [width, height, slope, intercept, offset, smoothFlag],
-  );
-
-  const rect = useMemo(() => Skia.XYWHRect(0, 0, width, height), [width, height]);
+    };
+  }, [smoothFlag]);
+  const layerHi = useDerivedValue(() => layer.get().hi);
+  const layerLo = useDerivedValue(() => layer.get().lo);
+  const layerW = useDerivedValue(() => layer.get().w);
+  const layerH = useDerivedValue(() => layer.get().h);
 
   // Constant on-screen line width at any zoom.
   const stroke = useDerivedValue(() => 1.5 / v.scale.get());
@@ -509,10 +531,10 @@ export function DicomViewport({
           <Group transform={transform}>
             {/* Mounted before the first frame arrives (empty until then): a shader mounted in the same
                 commit as its first real uniforms could keep the placeholder values and draw flat gray. */}
-            <Rect x={0} y={0} width={gray?.width ?? 0} height={gray?.height ?? 0}>
+            <Rect x={0} y={0} width={layerW} height={layerH}>
               <Shader source={GRAY_EFFECT} uniforms={uniforms}>
-                <ImageShader image={gray?.hi ?? EMPTY_PLANE} fit="none" rect={rect} sampling={NEAREST} />
-                <ImageShader image={gray?.lo ?? EMPTY_PLANE} fit="none" rect={rect} sampling={NEAREST} />
+                <ImageShader image={layerHi} fit="none" x={0} y={0} width={layerW} height={layerH} sampling={NEAREST} />
+                <ImageShader image={layerLo} fit="none" x={0} y={0} width={layerW} height={layerH} sampling={NEAREST} />
               </Shader>
             </Rect>
             {frame?.kind === 'color' ? (
